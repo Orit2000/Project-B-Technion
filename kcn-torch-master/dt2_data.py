@@ -80,11 +80,11 @@ def load_dt2_data(args):
     dt2_file= '/content/Project-B-Technion/kcn-torch-master/datasets/n32_e035_1arc_v3.dt2'
     # check if file exists
     if not os.path.isfile(dt2_file):
-        raise Exception(f"DT2 file {dt2_file} not found. Please provide the correct file.")
+        #raise Exception(f"DT2 file {dt2_file} not found. Please provide the correct file.")
+        raise Exception(f"{dt2_file}")
 
     # Create DT2Dataset object
     dataset = DT2Dataset(dt2_file=dt2_file, include_coords_in_features=True, normalize=True)
-
     # Split into train and test sets
     num_total_train = int(dataset.coords.shape[0] * 0.8)  # Use 80% for training
 
