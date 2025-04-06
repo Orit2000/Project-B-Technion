@@ -77,7 +77,7 @@ def load_dt2_data(args):
     # data file path
     #dt2_file = os.path.join(args.data_path, args.dataset + ".dt2")
     # FOR COLLAB:
-    dt2_file= '/content/Project-B-Technion/kcn-torch-master/n32_e035_1arc_v3.dt2'
+    dt2_file= '/content/Project-B-Technion/kcn-torch-master/datasets/n32_e035_1arc_v3.dt2'
     # check if file exists
     if not os.path.isfile(dt2_file):
         raise Exception(f"DT2 file {dt2_file} not found. Please provide the correct file.")
