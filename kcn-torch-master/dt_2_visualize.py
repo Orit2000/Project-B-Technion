@@ -13,7 +13,7 @@ def degrees_to_meters(degree_res, latitude):
     return lat_res_m, lon_res_m 
 
 # Load the DTED file
-dt2_file = "datasets/n32_e035_1arc_v3.dt2"
+dt2_file = "datasets/n33_e035_1arc_v3.dt2"
 with rasterio.open(dt2_file) as dataset:
     elevation = dataset.read(1)  # Read the first band (elevation values)
     extent = [dataset.bounds.left, dataset.bounds.right, dataset.bounds.bottom, dataset.bounds.top]  # Get geographical extent
