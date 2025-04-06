@@ -16,6 +16,7 @@ class DT2Dataset(Dataset):
             normalize: if True, normalize the feature values
         """
         with rasterio.open(dt2_file) as src:
+            print("I am reading!")
             elevation = src.read(1)  # shape: (height, width)
             transform = src.transform
             height, width = elevation.shape
@@ -77,7 +78,7 @@ def load_dt2_data(args):
     # data file path
     #dt2_file = os.path.join(args.data_path, args.dataset + ".dt2")
     # FOR COLLAB:
-    dt2_file= '/content/Project-B-Technion/kcn-torch-master/datasets/n32_e035_1arc_v3.dt2'
+    dt2_file= "/content/Project-B-Technion/kcn-torch-master/datasets/n32_e035_1arc_v3.dt2"
     print(f"dt2_file is: {dt2_file}")
     # check if file exists
     #if not os.path.isfile(dt2_file):
