@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import kcn 
 import data
+import dt2_data
 from tqdm import tqdm
 
 def run_kcn(args):
@@ -34,7 +35,10 @@ def run_kcn(args):
     if args.dataset == "bird_count":
         trainset, testset = data.load_bird_count_data(args)
     else:
-        raise Exception(f"The repo does not support this dataset yet: args.dataset={args.dataset}")
+        #raise Exception(f"The repo does not support this dataset yet: args.dataset={args.dataset}")
+        # Orit's
+        # trainset, testset = data.load_bird_count_data(args)
+        trainset, testset = dt2_data.load_dt2_data(args)
 
     print(f"The {args.dataset} dataset has {len(trainset)} training instances and {len(testset)} test instances.")
 

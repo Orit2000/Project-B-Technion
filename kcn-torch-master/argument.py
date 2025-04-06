@@ -6,7 +6,9 @@ def parse_opt():
     # Settings
     parser = argparse.ArgumentParser()
     parser.add_argument('--random_seed', type=int, default="5", help="The random seed")
-    parser.add_argument('--dataset', type=str, default="bird_count", help="The dataset name: currently can only be 'bird_count'")
+    #parser.add_argument('--dataset', type=str, default="bird_count", help="The dataset name: currently can only be 'bird_count'")
+    # Orit's
+    parser.add_argument('--dataset', type=str, default="n32_e035_1arc_v3", help="The dataset name (either 'bird_count' or DT2 file name)")
     parser.add_argument('--data_path', type=str, default="./datasets", help="The folder containing the data file. The default file is './data/{dataset}.pkl'")
     parser.add_argument('--use_default_test_set', type=bool, default=False, help='Use the default test set from the data')
     
