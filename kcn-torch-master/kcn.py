@@ -207,4 +207,31 @@ class GNN(torch.nn.Module):
 
         return x
 
+def get_multihop_neighbors(adj: torch.Tensor, num_hops: int = 3, top_k: int = 10):
+    """
+    Compute multi-hop neighbors up to a given number of hops.
+    Args:
+        adj: [N, N] tensor, weighted adjacency matrix
+        num_hops: how many adjacency powers to consider
+        top_k: maximum number of neighbors to keep per node
+    Returns:
+        new_adj: thresholded [N, N] tensor with multi-hop connections
+    """
+    N = adj.shape[0]
+    A_power = adj.clone()
+    combined_adj = adj.clone()
+
+    for hop in range(2, num_hops + 1):
+        A_power = torch.matmul(A_power, adj)
+        combined_adj += A_power
+
+    # Keep top-k connections per row
+    for i in range(N):
+        row = combined_adj[i]
+        topk_vals, topk_idx = torch.topk(row, top_k)
+        mask = torch.zeros_like(row)
+        mask[topk_idx] = topk_vals
+        combined_adj[i] = mask
+
+    return combined_adj
 
