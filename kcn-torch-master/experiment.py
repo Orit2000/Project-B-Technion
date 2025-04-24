@@ -32,13 +32,14 @@ def run_kcn(args):
     """
     # This function has the following three steps:
     # 1) loading data; 2) spliting the data into training and test subsets; 3) normalizing data 
+    print(f"from run_kcn: {args.dataset}")
+    
     if args.dataset == "bird_count":
         trainset, testset = data.load_bird_count_data(args)
-    else:
-        #raise Exception(f"The repo does not support this dataset yet: args.dataset={args.dataset}")
-        # Orit's
-        # trainset, testset = data.load_bird_count_data(args)
+    elif args.dataset == "n32_e035_1arc_v3":
         trainset, testset = dt2_data.load_dt2_data(args)
+    else: 
+        raise Exception(f"The repo does not support this dataset yet: args.dataset={args.dataset}")
 
     print(f"The {args.dataset} dataset has {len(trainset)} training instances and {len(testset)} test instances.")
 

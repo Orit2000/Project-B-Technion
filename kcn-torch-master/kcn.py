@@ -127,8 +127,9 @@ class KCN(torch.nn.Module):
         #row_norm = torch.sum(torch.square(all_coords), dim=1)
         #dist = row_norm[:, None] - 2 * torch.matmul(all_coords, all_coords.t()) + row_norm[None, :]
         #kernel = torch.exp(-self.length_scale * dist)
-
-        adj = torch.from_numpy(kernel)
+        ## Orit's
+        #adj = torch.from_numpy(kernel)
+        adj = get_multihop_neighbors(torch.from_numpy(kernel), num_hops=3, top_k=self.n_neighbors + 1)
         # one choice is to normalize the adjacency matrix 
         #curr_adj = normalize_adj(curr_adj + np.eye(curr_adj.shape[0]))
     

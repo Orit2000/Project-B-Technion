@@ -2,12 +2,18 @@ import argparse
 import torch
 
 def parse_opt():
-
+    custom_args = [
+        "--dataset", "n32_e035_1arc_v3",
+        "--device", "cuda",
+        "--model", "kcn",
+        "--n_neighbors", "5",
+        "--num_hops", "3"
+    ]
     # Settings
     parser = argparse.ArgumentParser()
     parser.add_argument('--random_seed', type=int, default="5", help="The random seed")
     #parser.add_argument('--dataset', type=str, default="bird_count", help="The dataset name: currently can only be 'bird_count'")
-    # Orit's
+    #Orit
     parser.add_argument('--dataset', type=str, default="n32_e035_1arc_v3", help="The dataset name (either 'bird_count' or DT2 file name)")
     parser.add_argument('--data_path', type=str, default="./datasets", help="The folder containing the data file. The default file is './data/{dataset}.pkl'")
     parser.add_argument('--use_default_test_set', type=bool, default=False, help='Use the default test set from the data')
@@ -29,12 +35,15 @@ def parse_opt():
     parser.add_argument('--batch_size', type=int, default=64, help='Batch size')
     
     parser.add_argument('--device', type=str, default="auto", help='Computation device.')
-    
-    args, unknowns = parser.parse_known_args()
+    parser.add_argument('--num_hops', type=int, default=3, help='Number of hops to include in the graph.')
+
+    #args, unknowns = parser.parse_known_args()
+    args = parser.parse_args(custom_args)  # ← don't use sys.argv at all
     
     if args.device == "auto":
         args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     else:
         args.device = torch.device(args.device)
+    print(f"device: {args.device}")
 
     return args
