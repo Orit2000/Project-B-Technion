@@ -31,7 +31,8 @@ class KCN(torch.nn.Module):
             for i in range(self.trainset.coords.shape[0]):
                 att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i])
                 self.graph_inputs.append(att_graph)
-
+                print(f"")
+        print(f"len of graph_inputs:{len(self.graph_inputs)}")
         # initialize model
         # input dimensions should be feature dimensions, a label dimension and an indicator dimension 
         input_dim = trainset.features.shape[1] + 2
@@ -130,17 +131,21 @@ class KCN(torch.nn.Module):
         ## Orit's
         #adj = torch.from_numpy(kernel)
         adj = get_multihop_neighbors(torch.from_numpy(kernel), num_hops=3, top_k=self.n_neighbors + 1)
+        print(f"adj shape:{adj.shape}")
         # one choice is to normalize the adjacency matrix 
         #curr_adj = normalize_adj(curr_adj + np.eye(curr_adj.shape[0]))
     
         # create a graph from it
         nz = adj.nonzero(as_tuple=True)
+        print(f"nz shape:{nz.shape}")
         edges = torch.stack(nz, dim=0)
+        print(f"edges shape:{edges.shape}")
         edge_weights = adj[nz]
+        print(f"edge_weights shape:{edge_weights.shape}")
     
         # form the graph
         attributed_graph = torch_geometric.data.Data(x=graph_features, edge_index=edges, edge_attr=edge_weights, y=None)
-    
+        print(f"attributed_graph shape:{edge_weights.shape}")
         return attributed_graph 
 
     def _normalize_adj(self, adj):
