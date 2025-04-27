@@ -179,7 +179,7 @@ class GNN(torch.nn.Module):
         self.add_module("layer0", conv_layer)
 
 
-        for ilayer in range(1, len(self.hidden_sizes)):
+        for ilayer in range(1, len(self.hidden_sizes)): #3 layers
             if self.model_type == 'kcn':
                 conv_layer = torch_geometric.nn.GCNConv (self.hidden_sizes[ilayer - 1], self.hidden_sizes[ilayer], bias=False, add_self_loops=True)
             elif self.model_type == 'kcn_gat':

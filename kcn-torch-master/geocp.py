@@ -2,7 +2,7 @@ import numpy as np
 import torch
 
 class GeoCPWrapper:
-    def __init__(self, model, calibration_coords, calibration_features, calibration_labels, eps=0.1, decay_beta=1.0):
+    def __init__(self, model, calibration_coords, calibration_features, calibration_labels, eps=0.1, decay_beta=1.0, device="cpu"):
         """
         model: Trained model
         calibration_coords: (n_calib, 2)
@@ -11,13 +11,13 @@ class GeoCPWrapper:
         eps: miscoverage level (default 0.1 for 90% confidence)
         decay_beta: decay rate for distance weighting
         """
-        self.model = model
-        self.calib_coords = calibration_coords.cpu().numpy()
-        self.calib_features = calibration_features
-        self.calib_labels = calibration_labels
+        self.model = model.to(device)
+        self.device = device
+        self.calib_coords = calibration_coords.to(self.device)
+        self.calib_features = calibration_features.to(self.device)
+        self.calib_labels = calibration_labels.to(self.device)
         self.eps = eps
         self.decay_beta = decay_beta
-        
         # Predict calibration set outputs
         with torch.no_grad():
             preds = model(calibration_coords, calibration_features).cpu().numpy()
