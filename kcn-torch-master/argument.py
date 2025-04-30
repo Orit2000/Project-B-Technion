@@ -42,8 +42,10 @@ def parse_opt():
     
     if args.device == "auto":
         args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        args.device = 'cpu'
     else:
         args.device = torch.device(args.device)
+        args.device = 'cpu'
     print(f"device: {args.device}")
 
     return args

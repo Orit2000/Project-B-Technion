@@ -34,6 +34,7 @@ class DT2Dataset(Dataset):
             # Features: only elevation for now
             if include_coords_in_features:
                 features = np.concatenate([coords, elevations], axis=1)
+                print(f"Features shape:{features.shape}")
             else:
                 features = elevations
 
