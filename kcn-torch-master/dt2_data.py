@@ -4,6 +4,7 @@ import rasterio
 from torch.utils.data import Dataset
 from data import SpatialDataset
 import os
+from matplotlib import pyplot as plt
 
 class DT2Dataset(Dataset):
     """Dataset for DTED elevation maps in SpatialDataset format."""
@@ -74,9 +75,10 @@ def load_dt2_data(args):
     num_total_train : int, number of training data points. The first `num_total_train` 
                       of instances from three other return values should form the training set
     """
-
     # data file path
     dt2_file = os.path.join(args.data_path, args.dataset + ".dt2")
+    print(f"[DEBUG] Using dt2_file path: {dt2_file}")
+    assert os.path.isfile(dt2_file), f"File does not exist: {dt2_file}"
     # FOR COLLAB:
     #dt2_file= "/content/Project-B-Technion/kcn-torch-master/datasets/n32_e035_1arc_v3.dt2"
     #print(f"dt2_file is: {dt2_file}")
@@ -88,9 +90,18 @@ def load_dt2_data(args):
     # Create DT2Dataset object
     dataset = DT2Dataset(dt2_file=dt2_file, include_coords_in_features=True, normalize=True)
     print("dataset exists!")
+    # Resample:
+    total = dataset.coords.shape[0]
+    #print(f"min of coord: ({min(dataset.coords[:,0])},{min(dataset.coords[:,1])})")
+    #print(f"max of coord: ({max(dataset.coords[:,0])},{max(dataset.coords[:,1])})")
+    keep_n = int(total * 0.005)
+    selected_idx = np.random.RandomState(seed=args.random_seed).choice(total, size=keep_n, replace=False)
+
+    dataset.coords = dataset.coords[selected_idx]
+    dataset.features = dataset.features[selected_idx]
+    dataset.y = dataset.y[selected_idx]
     # Split into train and test sets
     num_total_train = int(dataset.coords.shape[0] * 0.8)  # Use 80% for training
-
     # Random shuffle and split
     perm = np.random.RandomState(seed=args.random_seed).permutation(dataset.coords.shape[0])
     trainset = SpatialDataset(
@@ -103,6 +114,53 @@ def load_dt2_data(args):
         features=dataset.features[perm[num_total_train:]].numpy(),
         y=dataset.y[perm[num_total_train:]].numpy()
     )
-
+    inspect_dataset(trainset, name="Train")
+    inspect_dataset(testset, name="Test")
+    
+    set_plot_2(trainset)
+    set_plot_2(testset)
     # Feature normalization is already handled in DT2Dataset, so no need to repeat
     return trainset, testset
+
+def inspect_dataset(dataset, name="Train"):
+    print(f"\n {name} Dataset Summary")
+    print(f"➤ Number of points: {len(dataset)}")
+    print(f"➤ Coords shape: {dataset.coords.shape}")
+    print(f"➤ Feature shape: {dataset.features.shape}")
+    print(f"➤ Label shape: {dataset.y.shape}")
+    print(f"➤ Feature mean/std (first 5 dims):")
+    print(f"   mu = {dataset.features.mean(0)[:5].numpy()}")
+    print(f"  std = {dataset.features.std(0)[:5].numpy()}")
+    print(f"➤ Elevation min/max: {dataset.y.min().item():.2f} / {dataset.y.max().item():.2f}")
+
+    # Coordinates info
+    coords = dataset.coords.numpy()
+    print(f"➤ Lat range: {coords[:, 0].min():.4f} - {coords[:, 0].max():.4f}")
+    print(f"➤ Lon range: {coords[:, 1].min():.4f} - {coords[:, 1].max():.4f}")
+
+def set_plot(dataset):
+    extent = [dataset.coords[1].min(),dataset.coords[1].max(), dataset.coords[0].min(), dataset.coords[0].max()]  # Get geographical extent
+    plt.figure(figsize=(10, 8))
+    plt.imshow(dataset.y, cmap="terrain", extent=extent, origin="upper")
+    plt.colorbar(label="Elevation (m)")
+    plt.title("DTED Level 2 Elevation Data")
+    plt.xlabel("Longitude")
+    plt.ylabel("Latitude")
+    plt.show()
+    
+def set_plot_2(dataset):
+    plt.figure(figsize=(10, 8))
+    extent = [dataset.coords[:, 1].min(),dataset.coords[:, 1].max(), dataset.coords[:, 0].min(), dataset.coords[:,0].max()]  # Get geographical extent
+    plt.imshow(dataset.y, cmap="terrain", extent=extent, origin="upper")
+    plt.colorbar(label="Elevation (m)")
+    
+    # Scatter your training points on top
+    lats = dataset.coords[:, 0]
+    lons = dataset.coords[:, 1]
+    plt.scatter(lons, lats, s=2, c='red', label='Training points', alpha=0.6)
+
+    plt.title("DTED Level 2 with Sampled Training Points")
+    plt.xlabel("Longitude")
+    plt.ylabel("Latitude")
+    plt.legend()
+    plt.show()

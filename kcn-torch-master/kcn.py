@@ -85,7 +85,7 @@ class KCN(torch.nn.Module):
                 for i in range(len(coords)):
                     att_graph = self.form_input_graph(coords[i], features[i], neighbors[i])
                     batch_inputs.append(att_graph)
-
+                    show_sample_graph(model, index=0)
                 batch_inputs = self.collate_fn(batch_inputs) 
 
         batch_inputs = batch_inputs.to(self.device)
@@ -229,10 +229,17 @@ def get_multihop_neighbors(adj: torch.Tensor, num_hops: int = 3, top_k: int = 10
     # Keep top-k connections per row
     for i in range(N):
         row = combined_adj[i]
-        topk_vals, topk_idx = torch.topk(row, top_k)
+        topk_vals, topk_idx = torch.topk(row, top_k) #This filters out weak/unimportant edges — keeps graph sparse and focused.
         mask = torch.zeros_like(row)
         mask[topk_idx] = topk_vals
         combined_adj[i] = mask
 
     return combined_adj
 
+def show_sample_graph(model, index=0):
+    graph = model.graph_inputs[index]
+    G = to_networkx(graph, to_undirected=True)
+    plt.figure(figsize=(6, 6))
+    nx.draw(G, with_labels=True, node_size=50)
+    plt.title(f"Sample Graph for Point #{index}")
+    plt.show()

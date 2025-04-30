@@ -4,6 +4,9 @@ import kcn
 import data
 import dt2_data
 from tqdm import tqdm
+import networkx as nx
+import matplotlib.pyplot as plt
+from torch_geometric.utils import to_networkx
 
 def run_kcn(args):
     """ Train and test a KCN model on a train-test split  
@@ -56,7 +59,7 @@ def run_kcn(args):
     model = model.to(args.device)
 
     loss_func = torch.nn.MSELoss(reduction='mean')
-
+    show_sample_graph(model, index=0)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     epoch_train_error = []
@@ -121,3 +124,10 @@ def run_kcn(args):
     print(f"Test error is {test_error}")
 
     return test_error 
+def show_sample_graph(model, index=0):
+    graph = model.graph_inputs[index]
+    G = to_networkx(graph, to_undirected=True)
+    plt.figure(figsize=(6, 6))
+    nx.draw(G, with_labels=True, node_size=50)
+    plt.title(f"Sample Graph for Point #{index}")
+    plt.show()
