@@ -9,37 +9,46 @@ from matplotlib import pyplot as plt
 class DT2Dataset(Dataset):
     """Dataset for DTED elevation maps in SpatialDataset format."""
     
-    def __init__(self, dt2_file, include_coords_in_features=True, normalize=True):
+    def __init__(self, dt2_file, include_coords_in_features=False, normalize=True):
         """
         Args:
             dt2_file: path to the .dt2 file
             include_coords_in_features: if True, adds lat/lon as part of the feature vector
             normalize: if True, normalize the feature values
+            
+            Notes:
+            transform is a 2D affine transformation that maps pixel coordinates (row, col) to geographic coordinates (lon, lat).
+            transform = (pixel_width, row_rotation, x_min, col_rotation, pixel_height, y_max).
+            transform[0] is pixel width in degrees (Δlon)
+            transform[2] is lon_min (start longitude)
+            transform[4] is pixel height (negative, because images start from top-left)
+            transform[5] is lat_max (top latitude)
+
         """
         with rasterio.open(dt2_file) as src:
             print("I am reading!")
-            elevation = src.read(1)  # shape: (height, width)
+            elevation = src.read(1)  # shape: (height, width). elevation[i,j] - gives the elevation in meters at (i,j)
             transform = src.transform
             height, width = elevation.shape
 
             # Create coordinate grid
-            lon_coords = np.array([transform[2] + i * transform[0] for i in range(width)])
-            lat_coords = np.array([transform[5] + j * transform[4] for j in range(height)])
-            lon_grid, lat_grid = np.meshgrid(lon_coords, lat_coords)
+            lon_coords = np.array([transform[2] + i * transform[0] for i in range(width)]) # 1D array of longitudes for each column
+            lat_coords = np.array([transform[5] + j * transform[4] for j in range(height)]) # 1D array of latitudes for each row
+            lon_grid, lat_grid = np.meshgrid(lon_coords, lat_coords) # Creates full grids of shape (height, width) — so now each pixel has an exact lat-lon pair.
 
             # Flatten all arrays
             coords = np.stack([lat_grid.flatten(), lon_grid.flatten()], axis=1)  # [n, 2]
             elevations = elevation.flatten().astype(np.float32).reshape(-1, 1)    # [n, 1]
 
-            # Features: only elevation for now
+            # Features: only coords for now
             if include_coords_in_features:
                 features = np.concatenate([coords, elevations], axis=1)
                 print(f"Features shape:{features.shape}")
             else:
-                features = elevations
+                features = coords
 
-            # Labels: can be elevation again, or zeros if unknown
-            y = elevations  # or y = np.zeros_like(elevations) if elevation is not target
+            # Labels
+            y = elevations  
 
             # Convert to tensors
             self.coords = torch.from_numpy(coords).float()
@@ -96,6 +105,7 @@ def load_dt2_data(args):
     #print(f"min of coord: ({min(dataset.coords[:,0])},{min(dataset.coords[:,1])})")
     #print(f"max of coord: ({max(dataset.coords[:,0])},{max(dataset.coords[:,1])})")
     keep_n = int(total * 0.005)
+    #keep_n = int(total * 0.2)
     selected_idx = np.random.RandomState(seed=args.random_seed).choice(total, size=keep_n, replace=False)
 
     dataset.coords = dataset.coords[selected_idx]
@@ -118,8 +128,8 @@ def load_dt2_data(args):
     inspect_dataset(trainset, name="Train")
     inspect_dataset(testset, name="Test")
     
-    set_plot_2(trainset)
-    set_plot_2(testset)
+    #set_plot_2(trainset)
+    #set_plot_2(testset)
     # Feature normalization is already handled in DT2Dataset, so no need to repeat
     return trainset, testset
 

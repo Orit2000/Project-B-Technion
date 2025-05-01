@@ -16,9 +16,9 @@ class KCN(torch.nn.Module):
         # set neighbor relationships within the training set
         self.n_neighbors = args.n_neighbors
         self.knn = sklearn.neighbors.NearestNeighbors(n_neighbors=self.n_neighbors).fit(self.trainset.coords)
-        distances, self.train_neighbors = self.knn.kneighbors(None, return_distance=True)
+        distances, self.train_neighbors = self.knn.kneighbors(None, return_distance=True) # the shape of distances and train_neighbors are (N,5)
 
-        if args.length_scale == "auto":
+        if args.length_scale == "auto": 
             self.length_scale = np.median(distances.flatten())
             print(f"Length scale is set to {self.length_scale}")
         else:
@@ -31,7 +31,7 @@ class KCN(torch.nn.Module):
             for i in range(self.trainset.coords.shape[0]):
                 att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i])
                 self.graph_inputs.append(att_graph)
-                print(f"")
+                
         print(f"len of graph_inputs:{len(self.graph_inputs)}")
         # initialize model
         # input dimensions should be feature dimensions, a label dimension and an indicator dimension 
@@ -86,7 +86,7 @@ class KCN(torch.nn.Module):
                 for i in range(len(coords)):
                     att_graph = self.form_input_graph(coords[i], features[i], neighbors[i])
                     batch_inputs.append(att_graph)
-                    show_sample_graph(model, index=0)
+                    #show_sample_graph(model, index=0)
                 batch_inputs = self.collate_fn(batch_inputs) 
 
         batch_inputs = batch_inputs.to(self.device)
@@ -103,44 +103,57 @@ class KCN(torch.nn.Module):
 
     def form_input_graph(self, coord, feature, neighbors):
     
-        output_dim = self.trainset.y.shape[1]
+        output_dim = self.trainset.y.shape[1] 
 
         # label inputs
-        y = torch.concat([torch.zeros([1, output_dim]), self.trainset.y[neighbors]], axis=0)
+        y = torch.concat([torch.zeros([1, output_dim]), self.trainset.y[neighbors]], axis=0) #[0, y_neighbor_1, y_neigbor_2,...], shape: 1x(output_dim*(1+len(neighbors)))
     
         # indicator
         indicator = torch.zeros([neighbors.shape[0] + 1])
-        indicator[0] = 1.0
+        indicator[0] = 1.0 #[1,0,0,0,0,0], shape: 1*(neighbors.shape[0] + 1)
     
         # feature inputs 
-        features = torch.concat([feature[None, :], self.trainset.features[neighbors]], axis=0)
-
+        features = torch.concat([feature[None, :], self.trainset.features[neighbors]], axis=0) # A matrix! Each row is the vec feature for the current node. The first node is itself and the other are the neighbors.
+        # Final features shape: [neighbors.shape[0] + 1, ],feature.shape[0]] 
         # form graph features
-        graph_features = torch.concat([features, y, indicator[:, None]], axis=1)
+        graph_features = torch.concat([features, y, indicator[:, None]], axis=1) # A matrix shape (neighbors.shape[0] + 1, feartures.shape[0]+y.shape+1)
     
 
         # compute a weighted graph from an rbf kernel
-        all_coords = torch.concat([coord[None, :], self.trainset.coords[neighbors]], axis=0)
+        all_coords = torch.concat([coord[None, :], self.trainset.coords[neighbors]], axis=0)  # A matrix shape (neighbors.shape[0] + 1,2)
 
         # K(x, y) = exp(-gamma ||x-y||^2)
-        kernel = sklearn.metrics.pairwise.rbf_kernel(all_coords.numpy(), gamma=1 / (2 * self.length_scale ** 2))
+        kernel = sklearn.metrics.pairwise.rbf_kernel(all_coords.numpy(), gamma=1 / (2 * self.length_scale ** 2)) # A matrix shape ( # A matrix shape (neighbors.shape[0] + 1, (neighbors.shape[0] + 1)
+        # This matrix has 1 on the diagonal and values under 1 in the other places
         ## the implementation here is the same as sklearn.metrics.pairwise.rbf_kernel
         #row_norm = torch.sum(torch.square(all_coords), dim=1)
         #dist = row_norm[:, None] - 2 * torch.matmul(all_coords, all_coords.t()) + row_norm[None, :]
         #kernel = torch.exp(-self.length_scale * dist)
         ## Orit's
         #adj = torch.from_numpy(kernel)
-        adj = get_multihop_neighbors(torch.from_numpy(kernel), num_hops=3, top_k=self.n_neighbors + 1)
+        adj = get_multihop_neighbors(torch.from_numpy(kernel), num_hops=3, top_k=50) #zeros out the weak edges to get a sparse matrix
+        adj.fill_diagonal_(0.0)
         print(f"adj shape:{adj.shape}")
         # one choice is to normalize the adjacency matrix 
         #curr_adj = normalize_adj(curr_adj + np.eye(curr_adj.shape[0]))
     
         # create a graph from it
-        nz = adj.nonzero(as_tuple=True)
-        print(f"nz shape:{nz.shape}")
-        edges = torch.stack(nz, dim=0)
+        nz = adj.nonzero(as_tuple=True) #Finds the positions of non-zero entries in adj, i.e., where edges exist. nz = (row_indices, col_indices)
+        #print(f"nz shape:{nz.shape}")
+        edges = torch.stack(nz, dim=0) #Builds the edge_index tensor for PyG:
+        '''
+        In PyTorch Geometric, the graph's edge list is stored as:
+        edge_index.shape = (2, num_edges)
+        edge_index = [ [source_0, source_1, ..., source_N],
+                    [target_0, target_1, ..., target_N] ]
+        This is called the COO (coordinate) format for sparse graphs.
+        
+        sources = nz[0]  # row indices (i)
+        targets = nz[1]  # col indices (j)
+        edges = torch.stack([sources, targets], dim=0)
+        '''
         print(f"edges shape:{edges.shape}")
-        edge_weights = adj[nz]
+        edge_weights = adj[nz] #Picks the values of the retained edges from adj, i.e., the actual weights of the edges in the graph.
         print(f"edge_weights shape:{edge_weights.shape}")
     
         # form the graph
@@ -160,8 +173,6 @@ class KCN(torch.nn.Module):
         return adj_normalized
 
 
-
-
 class GNN(torch.nn.Module):
     """ Creates a KCN model with the given parameters."""
 
@@ -173,7 +184,7 @@ class GNN(torch.nn.Module):
         self.model_type = args.model
 
         if self.model_type == 'kcn':
-            conv_layer = torch_geometric.nn.GCNConv (input_dim, self.hidden_sizes[0], bias=False, add_self_loops=True)
+            conv_layer = torch_geometric.nn.GCNConv (input_dim, self.hidden_sizes[0], bias=False, add_self_loops=False)
         elif self.model_type == 'kcn_gat':
             conv_layer = torch_geometric.nn.GATConv (input_dim, self.hidden_sizes[0])
         elif self.model_type == 'kcn_sage':
@@ -186,7 +197,7 @@ class GNN(torch.nn.Module):
 
         for ilayer in range(1, len(self.hidden_sizes)): #3 layers
             if self.model_type == 'kcn':
-                conv_layer = torch_geometric.nn.GCNConv (self.hidden_sizes[ilayer - 1], self.hidden_sizes[ilayer], bias=False, add_self_loops=True)
+                conv_layer = torch_geometric.nn.GCNConv (self.hidden_sizes[ilayer - 1], self.hidden_sizes[ilayer], bias=False, add_self_loops=False)
             elif self.model_type == 'kcn_gat':
                 conv_layer = torch_geometric.nn.GATConv (self.hidden_sizes[ilayer - 1], self.hidden_sizes[ilayer])
             elif self.model_type == 'kcn_sage':

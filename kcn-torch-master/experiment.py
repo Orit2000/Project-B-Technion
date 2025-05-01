@@ -59,7 +59,7 @@ def run_kcn(args):
     model = model.to(args.device)
 
     loss_func = torch.nn.MSELoss(reduction='mean')
-    show_sample_graph(model, index=0)
+    #show_sample_graph(model, index=0)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     epoch_train_error = []
