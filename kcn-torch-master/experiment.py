@@ -47,8 +47,8 @@ def run_kcn(args):
     print(f"The {args.dataset} dataset has {len(trainset)} training instances and {len(testset)} test instances.")
 
     num_total_train = len(trainset)
-    num_valid = args.validation_size
-    num_train = num_total_train - args.validation_size
+    num_valid = int(args.validation_size * num_total_train)
+    num_train = num_total_train - num_valid
 
     # initialize a kcn model
     # 1) the entire training set including validation points are recorded by the model and will 
@@ -104,7 +104,6 @@ def run_kcn(args):
         valid_error = loss_func(valid_pred, valid_y.to(args.device))
 
         epoch_valid_error.append(valid_error.item())
-
         print(f"Epoch: {epoch},", f"train error: {train_error},", f"validation error: {valid_error}")
 
         # check whether to stop 
@@ -116,10 +115,11 @@ def run_kcn(args):
 
     # test the model
     model.eval()
-
-    test_preds = model(testset.coords, testset.features)
+    with open("logs/loss_tracking_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.txt", "a") as f:
+        f.write(f"{epoch},{train_error:.6f},{valid_error.item():.6f}\n")
+    test_preds = model(testset.coords, testset.features) #MAKE SURE THIS IS OK
+    test_preds = test_preds * trainset.y_std + trainset.y_mean
     test_error = loss_func(test_preds, testset.y.to(args.device))
-    test_error = torch.mean(test_error).item()
 
     print(f"Test error is {test_error}")
 
@@ -131,3 +131,22 @@ def show_sample_graph(model, index=0):
     nx.draw(G, with_labels=True, node_size=50)
     plt.title(f"Sample Graph for Point #{index}")
     plt.show()
+    
+    
+def save_checkpoint(model, args, y_mean, y_std, train_loss=None, val_loss=None, save_dir="saved_models"):
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, f"{args.model}_{args.dataset}_full.pt")
+
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+        'args': vars(args),  # turn Namespace to dict
+        'y_mean': y_mean,
+        'y_std': y_std
+    }
+
+    if train_loss is not None and val_loss is not None:
+        checkpoint['train_loss'] = train_loss
+        checkpoint['val_loss'] = val_loss
+
+    torch.save(checkpoint, save_path)
+    print(f"Checkpoint saved to: {save_path}")

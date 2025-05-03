@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 class DT2Dataset(Dataset):
     """Dataset for DTED elevation maps in SpatialDataset format."""
     
-    def __init__(self, dt2_file, include_coords_in_features=False, normalize=True):
+    def __init__(self, dt2_file, include_elevation_in_features=False, normalize=True):
         """
         Args:
             dt2_file: path to the .dt2 file
@@ -41,7 +41,7 @@ class DT2Dataset(Dataset):
             elevations = elevation.flatten().astype(np.float32).reshape(-1, 1)    # [n, 1]
 
             # Features: only coords for now
-            if include_coords_in_features:
+            if include_elevation_in_features:
                 features = np.concatenate([coords, elevations], axis=1)
                 print(f"Features shape:{features.shape}")
             else:
@@ -49,14 +49,14 @@ class DT2Dataset(Dataset):
 
             # Labels
             y = elevations  
-
+                
             # Convert to tensors
             self.coords = torch.from_numpy(coords).float()
             self.features = torch.from_numpy(features).float()
             self.y = torch.from_numpy(y).float()
-
-            if normalize:
-                self._normalize_features()
+            
+            #if normalize: #CHECK: Should I normalize the coords?
+            #    self._normalize_features()
 
     def _normalize_features(self):
         self.feature_mean = self.features.mean(dim=0, keepdim=True)
@@ -86,51 +86,72 @@ def load_dt2_data(args):
                       of instances from three other return values should form the training set
     """
     # data file path
+    cache_path = f"cache/trainset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt"
     dt2_file = os.path.join(args.data_path, args.dataset + ".dt2")
     print(f"[DEBUG] Using dt2_file path: {dt2_file}")
     assert os.path.isfile(dt2_file), f"File does not exist: {dt2_file}"
-    # FOR COLLAB:
-    #dt2_file= "/content/Project-B-Technion/kcn-torch-master/datasets/n32_e035_1arc_v3.dt2"
-    #print(f"dt2_file is: {dt2_file}")
-    # check if file exists
-    #if not os.path.isfile(dt2_file):
-    #raise Exception(f"DT2 file {dt2_file} not found. Please provide the correct file.")
-    #raise Exception(f"{dt2_file}")
+    if os.path.exists(cache_path):
+        print("Loading cached sets...")
+        trainset = torch.load(f"cache/trainset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt",weights_only=False)
+        testset = torch.load(f"cache/testset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt",weights_only=False)
+    else:
+        print("Creating and caching sets...")
+        # FOR COLLAB:
+        #dt2_file= "/content/Project-B-Technion/kcn-torch-master/datasets/n32_e035_1arc_v3.dt2"
+        #print(f"dt2_file is: {dt2_file}")
+        # check if file exists
+        #if not os.path.isfile(dt2_file):
+        #raise Exception(f"DT2 file {dt2_file} not found. Please provide the correct file.")
+        #raise Exception(f"{dt2_file}")
+        # Create DT2Dataset object
+        dataset = DT2Dataset(dt2_file=dt2_file, include_elevation_in_features=True, normalize=args.normalize_elev)
+        print("dataset exists!")
+        # Resample:
+        total = dataset.coords.shape[0]
+        #print(f"min of coord: ({min(dataset.coords[:,0])},{min(dataset.coords[:,1])})")
+        #print(f"max of coord: ({max(dataset.coords[:,0])},{max(dataset.coords[:,1])})")
+        keep_n = int(total * args.keep_n)
+        #keep_n = int(total * 0.2)
+        selected_idx = np.random.RandomState(seed=args.random_seed).choice(total, size=keep_n, replace=False)
 
-    # Create DT2Dataset object
-    dataset = DT2Dataset(dt2_file=dt2_file, include_coords_in_features=True, normalize=True)
-    print("dataset exists!")
-    # Resample:
-    total = dataset.coords.shape[0]
-    #print(f"min of coord: ({min(dataset.coords[:,0])},{min(dataset.coords[:,1])})")
-    #print(f"max of coord: ({max(dataset.coords[:,0])},{max(dataset.coords[:,1])})")
-    keep_n = int(total * 0.005)
-    #keep_n = int(total * 0.2)
-    selected_idx = np.random.RandomState(seed=args.random_seed).choice(total, size=keep_n, replace=False)
-
-    dataset.coords = dataset.coords[selected_idx]
-    dataset.features = dataset.features[selected_idx]
-    dataset.y = dataset.y[selected_idx]
-    # Split into train and test sets
-    num_total_train = int(dataset.coords.shape[0] * 0.8)  # Use 80% for training
-    # Random shuffle and split
-    perm = np.random.RandomState(seed=args.random_seed).permutation(dataset.coords.shape[0])
-    trainset = SpatialDataset(
-        coords=dataset.coords[perm[:num_total_train]].numpy(),
-        features=dataset.features[perm[:num_total_train]].numpy(),
-        y=dataset.y[perm[:num_total_train]].numpy()
-    )
-    testset = SpatialDataset(
-        coords=dataset.coords[perm[num_total_train:]].numpy(),
-        features=dataset.features[perm[num_total_train:]].numpy(),
-        y=dataset.y[perm[num_total_train:]].numpy()
-    )
-    inspect_dataset(trainset, name="Train")
-    inspect_dataset(testset, name="Test")
-    
-    #set_plot_2(trainset)
-    #set_plot_2(testset)
-    # Feature normalization is already handled in DT2Dataset, so no need to repeat
+        dataset.coords = dataset.coords[selected_idx]
+        dataset.features = dataset.features[selected_idx]
+        dataset.y = dataset.y[selected_idx]
+        # Split into train and test sets
+        num_total_train = int(dataset.coords.shape[0] * 0.8)  # Use 80% for training
+        # Random shuffle and split
+        perm = np.random.RandomState(seed=args.random_seed).permutation(dataset.coords.shape[0])
+        trainset = SpatialDataset(
+            coords=dataset.coords[perm[:num_total_train]].numpy(),
+            features=dataset.features[perm[:num_total_train]].numpy(),
+            y=dataset.y[perm[:num_total_train]].numpy()
+        )
+        
+        if args.normalize_elev:
+            num_total_train = len(trainset.y)
+            num_valid = args.validation_size * num_total_train
+            num_train = int(num_total_train - args.validation_size)
+            y_mean = trainset.y[0:num_train].mean(dim=0, keepdim=True)
+            y_std = trainset.y[0:num_train].std(dim=0, keepdim=True) + 1e-6
+            trainset.y = (trainset.y - y_mean) / y_std
+            print("NEW NORM IS COMING!")
+            trainset.y_mean = y_mean # CHECK THIS WRITING
+            trainset.y_std = y_std
+            
+        testset = SpatialDataset(
+            coords=dataset.coords[perm[num_total_train:]].numpy(),
+            features=dataset.features[perm[num_total_train:]].numpy(),
+            y=dataset.y[perm[num_total_train:]].numpy()
+        )
+        testset.y = (testset.y - y_mean) / y_std 
+        
+        inspect_dataset(trainset, name="Train")
+        inspect_dataset(testset, name="Test")
+        torch.save(trainset, f"cache/trainset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt")
+        torch.save(testset, f"cache/testset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt")
+        #set_plot_2(trainset)
+        #set_plot_2(testset)
+        # Feature normalization is already handled in DT2Dataset, so no need to repeat
     return trainset, testset
 
 def inspect_dataset(dataset, name="Train"):

@@ -3,6 +3,7 @@ import sklearn
 import sklearn.neighbors
 import torch
 import torch_geometric
+import os, torch
 
 
 class KCN(torch.nn.Module):
@@ -12,27 +13,30 @@ class KCN(torch.nn.Module):
         super(KCN, self).__init__()
 
         self.trainset = trainset
-
+        cache_path = f"cache/graph_inputs_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt"
         # set neighbor relationships within the training set
         self.n_neighbors = args.n_neighbors
         self.knn = sklearn.neighbors.NearestNeighbors(n_neighbors=self.n_neighbors).fit(self.trainset.coords)
         distances, self.train_neighbors = self.knn.kneighbors(None, return_distance=True) # the shape of distances and train_neighbors are (N,5)
-
-        if args.length_scale == "auto": 
-            self.length_scale = np.median(distances.flatten())
-            print(f"Length scale is set to {self.length_scale}")
-        else:
-            if not isinstance(args.length_scale, float):
-                raise Exception(f"If the provided length scale is not 'auto', then it should be a float number: args.length_scale={args.length_scale}")
-            self.length_scale = args.length_scale
-
-        with torch.no_grad():
-            self.graph_inputs = []
-            for i in range(self.trainset.coords.shape[0]):
-                att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i])
-                self.graph_inputs.append(att_graph)
-                
-        print(f"len of graph_inputs:{len(self.graph_inputs)}")
+        with open("logs/output.txt", "a") as f:
+            if args.length_scale == "auto": 
+                self.length_scale = np.median(distances.flatten())
+                print(f"Length scale is set to {self.length_scale}", file=f)
+            else:
+                if not isinstance(args.length_scale, float):
+                    raise Exception(f"If the provided length scale is not 'auto', then it should be a float number: args.length_scale={args.length_scale}")
+                self.length_scale = args.length_scale
+            if os.path.exists(cache_path):
+                print("Loading cached graphs...",file=f)
+                self.graph_inputs = torch.load(cache_path,weights_only=False)
+            else:
+                with torch.no_grad():
+                    self.graph_inputs = []
+                    for i in range(self.trainset.coords.shape[0]):
+                        att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i])
+                        self.graph_inputs.append(att_graph)
+                torch.save(self.graph_inputs, cache_path)    
+            print(f"len of graph_inputs:{len(self.graph_inputs)}",file=f)
         # initialize model
         # input dimensions should be feature dimensions, a label dimension and an indicator dimension 
         input_dim = trainset.features.shape[1] + 2
@@ -133,32 +137,33 @@ class KCN(torch.nn.Module):
         #adj = torch.from_numpy(kernel)
         adj = get_multihop_neighbors(torch.from_numpy(kernel), num_hops=3, top_k=50) #zeros out the weak edges to get a sparse matrix
         adj.fill_diagonal_(0.0)
-        print(f"adj shape:{adj.shape}")
-        # one choice is to normalize the adjacency matrix 
-        #curr_adj = normalize_adj(curr_adj + np.eye(curr_adj.shape[0]))
-    
-        # create a graph from it
-        nz = adj.nonzero(as_tuple=True) #Finds the positions of non-zero entries in adj, i.e., where edges exist. nz = (row_indices, col_indices)
-        #print(f"nz shape:{nz.shape}")
-        edges = torch.stack(nz, dim=0) #Builds the edge_index tensor for PyG:
-        '''
-        In PyTorch Geometric, the graph's edge list is stored as:
-        edge_index.shape = (2, num_edges)
-        edge_index = [ [source_0, source_1, ..., source_N],
-                    [target_0, target_1, ..., target_N] ]
-        This is called the COO (coordinate) format for sparse graphs.
+        with open("logs/output.txt", "a") as f:
+            print(f"adj shape:{adj.shape}",file=f)
+            # one choice is to normalize the adjacency matrix 
+            #curr_adj = normalize_adj(curr_adj + np.eye(curr_adj.shape[0]))
         
-        sources = nz[0]  # row indices (i)
-        targets = nz[1]  # col indices (j)
-        edges = torch.stack([sources, targets], dim=0)
-        '''
-        print(f"edges shape:{edges.shape}")
-        edge_weights = adj[nz] #Picks the values of the retained edges from adj, i.e., the actual weights of the edges in the graph.
-        print(f"edge_weights shape:{edge_weights.shape}")
-    
-        # form the graph
-        attributed_graph = torch_geometric.data.Data(x=graph_features, edge_index=edges, edge_attr=edge_weights, y=None)
-        print(f"attributed_graph shape:{edge_weights.shape}")
+            # create a graph from it
+            nz = adj.nonzero(as_tuple=True) #Finds the positions of non-zero entries in adj, i.e., where edges exist. nz = (row_indices, col_indices)
+            #print(f"nz shape:{nz.shape}")
+            edges = torch.stack(nz, dim=0) #Builds the edge_index tensor for PyG:
+            '''
+            In PyTorch Geometric, the graph's edge list is stored as:
+            edge_index.shape = (2, num_edges)
+            edge_index = [ [source_0, source_1, ..., source_N],
+                        [target_0, target_1, ..., target_N] ]
+            This is called the COO (coordinate) format for sparse graphs.
+            
+            sources = nz[0]  # row indices (i)
+            targets = nz[1]  # col indices (j)
+            edges = torch.stack([sources, targets], dim=0)
+            '''
+            print(f"edges shape:{edges.shape}",file=f)
+            edge_weights = adj[nz] #Picks the values of the retained edges from adj, i.e., the actual weights of the edges in the graph.
+            print(f"edge_weights shape:{edge_weights.shape}",file=f)
+        
+            # form the graph
+            attributed_graph = torch_geometric.data.Data(x=graph_features, edge_index=edges, edge_attr=edge_weights, y=None)
+            print(f"attributed_graph shape:{edge_weights.shape}",file=f)
         return attributed_graph 
 
     def _normalize_adj(self, adj):
