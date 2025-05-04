@@ -11,6 +11,7 @@ def parse_opt():
     ]'''
     # Settings
     parser = argparse.ArgumentParser()
+
     parser.add_argument('--random_seed', type=int, default="5", help="The random seed")
     parser.add_argument('--keep_n', type=float, default="0.005", help="The random seed")
     parser.add_argument('--normalize_elev', type=bool, default=True, help="The random seed")
@@ -22,6 +23,7 @@ def parse_opt():
     
     parser.add_argument('--model', type=str, default='kcn', help='One of three model types, kcn, kcn_gat, kcn_sage, which use GCN, GAT, and GraphSAGE respectively')
     parser.add_argument('--n_neighbors', type=int, default=50, help='Number of neighbors')
+    parser.add_argument('--top_k', type=int, default=25, help='Number of neighbors')
     parser.add_argument('--length_scale', default="auto", help='Length scale for RBF kernel. If set to "auto", then it will be set to the median of neighbor distances')
     parser.add_argument('--hidden_sizes', type=list, default=[8, 8, 8], help='Number of units in hidden layers, also decide the number of layers')
     parser.add_argument('--dropout', type=float, default=0.1, help='Dropout rate (1 - keep probability).')
@@ -38,11 +40,10 @@ def parse_opt():
     
     parser.add_argument('--device', type=str, default="auto", help='Computation device.')
     parser.add_argument('--num_hops', type=int, default=3, help='Number of hops to include in the graph.')
-
     #args, unknowns = parser.parse_known_args()
     #args = parser.parse_args(custom_args)  # ← don't use sys.argv at all
     args, unknowns = parser.parse_known_args()
-    
+    args.save_path = f"saved_models/{args.model}_{args.dataset}/"
     if args.device == "auto":
         args.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         #args.device = 'cpu'

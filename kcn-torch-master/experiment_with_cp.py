@@ -76,7 +76,7 @@ def run_kcn(args):
     # the training loop
     model.train()
 
-
+    best_val_loss = float('inf')
     for epoch in range(args.epochs):
 
         batch_train_error = [] 
@@ -121,6 +121,14 @@ def run_kcn(args):
                  np.mean(np.array(epoch_valid_error[-(args.es_patience + 3):-3]))):
             print("\nEarly stopping at epoch {}".format(epoch))
             break
+
+        #Savings
+        torch.save(model.state_dict(), f"{args.save_path}/weights_epoch{epoch}.pt")
+
+        # Optionally save best one
+        if valid_error < best_val_loss:
+            best_val_loss = valid_error
+            torch.save(model.state_dict(), f"{args.save_path}/best_model_epoch{epoch}.pt")
 
     # test the model
     model.eval()

@@ -3,7 +3,7 @@ import torch
 from argument import parse_opt 
 from experiment import run_kcn
 
-
+'''
 # repeat the experiment in the paper
 def random_runs(args):
     test_errors = []
@@ -39,5 +39,22 @@ if __name__ == "__main__":
     #    test_errors = random_runs(args)
     #    model_error[args.model] = (np.mean(test_errors), np.std(test_errors))
     #    print(model_error)
+'''
+# %%
+import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt
+import dt2_data
+import argument
+import experiment
 
-
+# %%
+args = argument.parse_opt()
+args.keep_n = 0.005*2
+print(args.dataset)
+print(args.n_neighbors)
+args.dataset = "n32_e035_1arc_v3"
+print(args.dataset)
+args.model = 'kcn'
+err = experiment.run_kcn(args)
+print('Model: {}, test error: {}\n'.format(args.model, err))

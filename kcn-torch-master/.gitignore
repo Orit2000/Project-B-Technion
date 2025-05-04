@@ -10,7 +10,7 @@ __pycache__
 *.log
 *.csv
 __pycache__/
-cache/
-logs/
-saved_models/
+cache/*.pt
+logs/*.txt
+saved_models/*.pt
 

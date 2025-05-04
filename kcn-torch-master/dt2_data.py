@@ -40,7 +40,7 @@ class DT2Dataset(Dataset):
             coords = np.stack([lat_grid.flatten(), lon_grid.flatten()], axis=1)  # [n, 2]
             elevations = elevation.flatten().astype(np.float32).reshape(-1, 1)    # [n, 1]
 
-            # Features: only coords for now
+            # Features: only coords by default or coords and elevation
             if include_elevation_in_features:
                 features = np.concatenate([coords, elevations], axis=1)
                 print(f"Features shape:{features.shape}")
@@ -86,6 +86,7 @@ def load_dt2_data(args):
                       of instances from three other return values should form the training set
     """
     # data file path
+    os.makedirs("cache/", exist_ok=True)
     cache_path = f"cache/trainset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt"
     dt2_file = os.path.join(args.data_path, args.dataset + ".dt2")
     print(f"[DEBUG] Using dt2_file path: {dt2_file}")
@@ -127,16 +128,16 @@ def load_dt2_data(args):
             y=dataset.y[perm[:num_total_train]].numpy()
         )
         
-        if args.normalize_elev:
-            num_total_train = len(trainset.y)
-            num_valid = args.validation_size * num_total_train
-            num_train = int(num_total_train - args.validation_size)
-            y_mean = trainset.y[0:num_train].mean(dim=0, keepdim=True)
-            y_std = trainset.y[0:num_train].std(dim=0, keepdim=True) + 1e-6
-            trainset.y = (trainset.y - y_mean) / y_std
-            print("NEW NORM IS COMING!")
-            trainset.y_mean = y_mean # CHECK THIS WRITING
-            trainset.y_std = y_std
+        #if args.normalize_elev:
+        num_total_train = len(trainset.y)
+        num_valid = args.validation_size * num_total_train
+        num_train = int(num_total_train - args.validation_size)
+        y_mean = trainset.y[0:num_train].mean(dim=0, keepdim=True)
+        y_std = trainset.y[0:num_train].std(dim=0, keepdim=True) + 1e-6
+        trainset.y = (trainset.y - y_mean) / y_std
+        print("NEW NORM IS COMING!")
+        trainset.y_mean = y_mean # CHECK THIS WRITING
+        trainset.y_std = y_std
             
         testset = SpatialDataset(
             coords=dataset.coords[perm[num_total_train:]].numpy(),

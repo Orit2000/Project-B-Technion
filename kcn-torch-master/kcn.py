@@ -11,14 +11,15 @@ class KCN(torch.nn.Module):
 
     def __init__(self, trainset, args) -> None:
         super(KCN, self).__init__()
-
+        save_metadata(args, trainset.y_mean, trainset.y_std)
         self.trainset = trainset
         cache_path = f"cache/graph_inputs_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt"
         # set neighbor relationships within the training set
         self.n_neighbors = args.n_neighbors
         self.knn = sklearn.neighbors.NearestNeighbors(n_neighbors=self.n_neighbors).fit(self.trainset.coords)
         distances, self.train_neighbors = self.knn.kneighbors(None, return_distance=True) # the shape of distances and train_neighbors are (N,5)
-        with open("logs/output.txt", "a") as f:
+        os.makedirs("logs", exist_ok=True)
+        with open("logs/output.txt", "w") as f:
             if args.length_scale == "auto": 
                 self.length_scale = np.median(distances.flatten())
                 print(f"Length scale is set to {self.length_scale}", file=f)
@@ -33,13 +34,13 @@ class KCN(torch.nn.Module):
                 with torch.no_grad():
                     self.graph_inputs = []
                     for i in range(self.trainset.coords.shape[0]):
-                        att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i])
+                        att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i],args.top_k)
                         self.graph_inputs.append(att_graph)
                 torch.save(self.graph_inputs, cache_path)    
             print(f"len of graph_inputs:{len(self.graph_inputs)}",file=f)
         # initialize model
         # input dimensions should be feature dimensions, a label dimension and an indicator dimension 
-        input_dim = trainset.features.shape[1] + 2
+        input_dim = trainset.features.shape[1] + 2 #CHANGES TO 1, since features contains the labels
         output_dim = trainset.y.shape[1]
 
         self.gnn = GNN(input_dim, args)
@@ -67,7 +68,7 @@ class KCN(torch.nn.Module):
         self.device = args.device
         self.gnn = self.gnn.to(self.device)
 
-
+# %%
     def forward(self, coords, features, train_indices=None):
 
         if train_indices is not None:
@@ -88,7 +89,7 @@ class KCN(torch.nn.Module):
             with torch.no_grad():
                 batch_inputs = []
                 for i in range(len(coords)):
-                    att_graph = self.form_input_graph(coords[i], features[i], neighbors[i])
+                    att_graph = self.form_input_graph(coords[i], features[i], neighbors[i], top_k)
                     batch_inputs.append(att_graph)
                     #show_sample_graph(model, index=0)
                 batch_inputs = self.collate_fn(batch_inputs) 
@@ -104,8 +105,8 @@ class KCN(torch.nn.Module):
         pred = self.last_activation(self.linear(center_output))
 
         return pred
-
-    def form_input_graph(self, coord, feature, neighbors):
+# %%
+    def form_input_graph(self, coord, feature, neighbors,top_k):
     
         output_dim = self.trainset.y.shape[1] 
 
@@ -135,7 +136,7 @@ class KCN(torch.nn.Module):
         #kernel = torch.exp(-self.length_scale * dist)
         ## Orit's
         #adj = torch.from_numpy(kernel)
-        adj = get_multihop_neighbors(torch.from_numpy(kernel), num_hops=3, top_k=50) #zeros out the weak edges to get a sparse matrix
+        adj = get_multihop_neighbors(torch.from_numpy(kernel), num_hops=3, top_k=top_k) #zeros out the weak edges to get a sparse matrix
         adj.fill_diagonal_(0.0)
         with open("logs/output.txt", "a") as f:
             print(f"adj shape:{adj.shape}",file=f)
@@ -165,7 +166,7 @@ class KCN(torch.nn.Module):
             attributed_graph = torch_geometric.data.Data(x=graph_features, edge_index=edges, edge_attr=edge_weights, y=None)
             print(f"attributed_graph shape:{edge_weights.shape}",file=f)
         return attributed_graph 
-
+# %%
     def _normalize_adj(self, adj):
         """Symmetrically normalize adjacency matrix."""
     
@@ -177,7 +178,7 @@ class KCN(torch.nn.Module):
     
         return adj_normalized
 
-
+# %%
 class GNN(torch.nn.Module):
     """ Creates a KCN model with the given parameters."""
 
@@ -228,7 +229,7 @@ class GNN(torch.nn.Module):
             x = torch.nn.functional.dropout(x, p=self.dropout, training=self.training)
 
         return x
-
+# %%
 def get_multihop_neighbors(adj: torch.Tensor, num_hops: int = 3, top_k: int = 10):
     """
     Compute multi-hop neighbors up to a given number of hops.
@@ -256,7 +257,7 @@ def get_multihop_neighbors(adj: torch.Tensor, num_hops: int = 3, top_k: int = 10
         combined_adj[i] = mask
 
     return combined_adj
-
+# %%
 def show_sample_graph(model, index=0):
     graph = model.graph_inputs[index]
     G = to_networkx(graph, to_undirected=True)
@@ -264,3 +265,31 @@ def show_sample_graph(model, index=0):
     nx.draw(G, with_labels=True, node_size=50)
     plt.title(f"Sample Graph for Point #{index}")
     plt.show()
+# %%
+def save_metadata(args, y_mean, y_std):
+    os.makedirs(args.save_path, exist_ok=True)
+    save_path = os.path.join(args.save_path, f"{args.model}_{args.dataset}_metadata.pt")
+
+    shared_info = {
+    'args': vars(args),
+    'y_mean': y_mean,
+    'y_std': y_std,
+    }
+    torch.save(shared_info, save_path)
+    print(f"Metadata saved to: {save_path}")
+
+#%%
+def save_checkpoint(model, args, y_mean, y_std, train_loss=None, val_loss=None):
+    os.makedirs(args.save_path, exist_ok=True)
+    save_path = os.path.join(args.save_path, "model.pt")  # fixed name for consistency
+
+    checkpoint = {
+        'model_state_dict': model.state_dict(),
+    }
+
+    if train_loss is not None and val_loss is not None:
+        checkpoint['train_loss'] = train_loss
+        checkpoint['val_loss'] = val_loss
+
+    torch.save(checkpoint, save_path)
+    print(f"Checkpoint saved to: {save_path}")

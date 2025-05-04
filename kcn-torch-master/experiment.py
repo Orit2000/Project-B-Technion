@@ -7,6 +7,7 @@ from tqdm import tqdm
 import networkx as nx
 import matplotlib.pyplot as plt
 from torch_geometric.utils import to_networkx
+import os
 
 def run_kcn(args):
     """ Train and test a KCN model on a train-test split  
@@ -49,7 +50,6 @@ def run_kcn(args):
     num_total_train = len(trainset)
     num_valid = int(args.validation_size * num_total_train)
     num_train = num_total_train - num_valid
-
     # initialize a kcn model
     # 1) the entire training set including validation points are recorded by the model and will 
     # be looked up in neighbor searches
@@ -64,7 +64,7 @@ def run_kcn(args):
 
     epoch_train_error = []
     epoch_valid_error = []
-
+    best_val_loss = float('inf')
     # the training loop
     model.train()
 
@@ -112,7 +112,15 @@ def run_kcn(args):
                  np.mean(np.array(epoch_valid_error[-(args.es_patience + 3):-3]))):
             print("\nEarly stopping at epoch {}".format(epoch))
             break
+        
+        #Savings
+        torch.save(model.state_dict(), f"{args.save_path}/weights_epoch{epoch}.pt")
 
+        # Optionally save best one
+        if valid_error < best_val_loss:
+            best_val_loss = valid_error
+            torch.save(model.state_dict(), f"{args.save_path}/best_model_epoch{epoch}.pt")
+            
     # test the model
     model.eval()
     with open("logs/loss_tracking_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.txt", "a") as f:
@@ -124,6 +132,7 @@ def run_kcn(args):
     print(f"Test error is {test_error}")
 
     return test_error 
+
 def show_sample_graph(model, index=0):
     graph = model.graph_inputs[index]
     G = to_networkx(graph, to_undirected=True)
@@ -133,20 +142,3 @@ def show_sample_graph(model, index=0):
     plt.show()
     
     
-def save_checkpoint(model, args, y_mean, y_std, train_loss=None, val_loss=None, save_dir="saved_models"):
-    os.makedirs(save_dir, exist_ok=True)
-    save_path = os.path.join(save_dir, f"{args.model}_{args.dataset}_full.pt")
-
-    checkpoint = {
-        'model_state_dict': model.state_dict(),
-        'args': vars(args),  # turn Namespace to dict
-        'y_mean': y_mean,
-        'y_std': y_std
-    }
-
-    if train_loss is not None and val_loss is not None:
-        checkpoint['train_loss'] = train_loss
-        checkpoint['val_loss'] = val_loss
-
-    torch.save(checkpoint, save_path)
-    print(f"Checkpoint saved to: {save_path}")
