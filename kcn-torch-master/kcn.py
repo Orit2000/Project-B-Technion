@@ -69,8 +69,7 @@ class KCN(torch.nn.Module):
         self.gnn = self.gnn.to(self.device)
 
 # %%
-    def forward(self, coords, features, train_indices=None):
-
+    def forward(self, coords, features, top_k, train_indices=None):
         if train_indices is not None:
             
             # if from training set, then read in pre-computed graphs

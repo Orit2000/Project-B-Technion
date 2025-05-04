@@ -81,7 +81,7 @@ def run_kcn(args):
             batch_coords, batch_features, batch_y = model.trainset[batch_ind]
 
             # make predictions and compute the average loss
-            pred = model(batch_coords, batch_features, batch_ind)
+            pred = model(batch_coords, batch_features, args.top_k, batch_ind)
             loss = loss_func(pred, batch_y.to(args.device))
 
             # update parameters
@@ -100,7 +100,7 @@ def run_kcn(args):
         valid_coords, valid_features, valid_y = model.trainset[valid_ind]
 
         # make predictions and calculate the error
-        valid_pred = model(valid_coords, valid_features, valid_ind)
+        valid_pred = model(valid_coords, valid_features, args.top_k, valid_ind)
         valid_error = loss_func(valid_pred, valid_y.to(args.device))
 
         epoch_valid_error.append(valid_error.item())
@@ -120,12 +120,12 @@ def run_kcn(args):
         if valid_error < best_val_loss:
             best_val_loss = valid_error
             torch.save(model.state_dict(), f"{args.save_path}/best_model_epoch{epoch}.pt")
-            
+
     # test the model
     model.eval()
     with open("logs/loss_tracking_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.txt", "a") as f:
         f.write(f"{epoch},{train_error:.6f},{valid_error.item():.6f}\n")
-    test_preds = model(testset.coords, testset.features) #MAKE SURE THIS IS OK
+    test_preds = model(testset.coords, testset.features, args.top_k) #MAKE SURE THIS IS OK
     test_preds = test_preds * trainset.y_std + trainset.y_mean
     test_error = loss_func(test_preds, testset.y.to(args.device))
 

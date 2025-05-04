@@ -54,3 +54,4 @@ class GeoCPWrapper:
         quantile = sorted_scores[min(idx, len(sorted_scores) - 1)]
 
         return pred - quantile, pred + quantile
+

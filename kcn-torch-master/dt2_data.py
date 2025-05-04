@@ -41,12 +41,15 @@ class DT2Dataset(Dataset):
             elevations = elevation.flatten().astype(np.float32).reshape(-1, 1)    # [n, 1]
 
             # Features: only coords by default or coords and elevation
+            '''
             if include_elevation_in_features:
                 features = np.concatenate([coords, elevations], axis=1)
                 print(f"Features shape:{features.shape}")
             else:
                 features = coords
-
+            '''
+            features = coords
+            # Maybe features = []
             # Labels
             y = elevations  
                 
@@ -105,7 +108,7 @@ def load_dt2_data(args):
         #raise Exception(f"DT2 file {dt2_file} not found. Please provide the correct file.")
         #raise Exception(f"{dt2_file}")
         # Create DT2Dataset object
-        dataset = DT2Dataset(dt2_file=dt2_file, include_elevation_in_features=True, normalize=args.normalize_elev)
+        dataset = DT2Dataset(dt2_file=dt2_file, include_elevation_in_features=False, normalize=args.normalize_elev)
         print("dataset exists!")
         # Resample:
         total = dataset.coords.shape[0]
