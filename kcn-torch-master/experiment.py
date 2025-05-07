@@ -40,7 +40,7 @@ def run_kcn(args):
     
     if args.dataset == "bird_count":
         trainset, testset = data.load_bird_count_data(args)
-    elif args.dataset == "n32_e035_1arc_v3":
+    elif args.dataset == "n32_e035_1arc_v3_cropped":
         trainset, validset, testset = dt2_data.load_dt2_data(args)
     else: 
         raise Exception(f"The repo does not support this dataset yet: args.dataset={args.dataset}")

@@ -17,8 +17,6 @@ def random_runs(args):
     test_errors = np.array(test_errors)
     return test_errors
  
-
-
 if __name__ == "__main__":
 
     args = parse_opt()
@@ -53,7 +51,7 @@ args = argument.parse_opt()
 args.keep_n = 0.005*2
 print(args.dataset)
 print(args.n_neighbors)
-args.dataset = "n32_e035_1arc_v3"
+args.dataset = "n32_e035_1arc_v3_cropped"
 print(args.dataset)
 args.model = 'kcn'
 err = experiment.run_kcn(args)

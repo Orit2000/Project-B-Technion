@@ -41,3 +41,4 @@ plt.title("DTED Level 2 Elevation Data")
 plt.xlabel("Longitude")
 plt.ylabel("Latitude")
 plt.show()
+
