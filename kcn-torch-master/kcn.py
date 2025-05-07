@@ -135,7 +135,7 @@ class KCN(torch.nn.Module):
         #kernel = torch.exp(-self.length_scale * dist)
         ## Orit's
         #adj = torch.from_numpy(kernel)
-        adj = get_multihop_neighbors(torch.from_numpy(kernel), num_hops=3, top_k=top_k) #zeros out the weak edges to get a sparse matrix
+        adj = get_multihop_neighbors(torch.from_numpy(kernel), num_hops=3, top_k=top_k) #zeros out the weak edges to get a sparse matrix # ***PAYATTENTION***
         adj.fill_diagonal_(0.0)
         with open("logs/output.txt", "a") as f:
             print(f"adj shape:{adj.shape}",file=f)

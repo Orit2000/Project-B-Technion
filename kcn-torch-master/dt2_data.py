@@ -152,7 +152,7 @@ def load_dt2_data(args):
         print("NEW NORM IS COMING!")
         y_mean = trainset.y[:num_train].mean(dim=0, keepdim=True)
         y_std = trainset.y[:num_train].std(dim=0, keepdim=True) + 1e-6
-        trainset.y = (trainset.y - y_mean) / y_std
+        #trainset.y = (trainset.y - y_mean) / y_std
         #validset.y = (validset.y - y_mean) / y_std
         trainset.y_mean = y_mean # CHECK THIS WRITING
         trainset.y_std = y_std
