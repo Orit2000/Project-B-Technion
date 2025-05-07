@@ -41,15 +41,13 @@ def run_kcn(args):
     if args.dataset == "bird_count":
         trainset, testset = data.load_bird_count_data(args)
     elif args.dataset == "n32_e035_1arc_v3":
-        trainset, testset = dt2_data.load_dt2_data(args)
+        trainset, validset, testset = dt2_data.load_dt2_data(args)
     else: 
         raise Exception(f"The repo does not support this dataset yet: args.dataset={args.dataset}")
 
     print(f"The {args.dataset} dataset has {len(trainset)} training instances and {len(testset)} test instances.")
 
-    num_total_train = len(trainset)
-    num_valid = int(args.validation_size * num_total_train)
-    num_train = num_total_train - num_valid
+    num_train = len(trainset.y)
     # initialize a kcn model
     # 1) the entire training set including validation points are recorded by the model and will 
     # be looked up in neighbor searches
@@ -94,14 +92,15 @@ def run_kcn(args):
 
         train_error = sum(batch_train_error) / len(batch_train_error)
         epoch_train_error.append(train_error)
-
+        '''
         # fetch the validation set
         valid_ind = range(num_train, num_total_train)
         valid_coords, valid_features, valid_y = model.trainset[valid_ind]
-
+        '''
         # make predictions and calculate the error
-        valid_pred = model(valid_coords, valid_features, args.top_k, valid_ind)
-        valid_error = loss_func(valid_pred, valid_y.to(args.device))
+        valid_pred = model(validset.coords, validset.features, args.top_k)
+        valid_pred = valid_pred * trainset.y_std + trainset.y_mean
+        valid_error = loss_func(valid_pred, validset.y.to(args.device))
 
         epoch_valid_error.append(valid_error.item())
         print(f"Epoch: {epoch},", f"train error: {train_error},", f"validation error: {valid_error}")

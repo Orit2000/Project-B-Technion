@@ -34,7 +34,7 @@ def parse_opt():
     
     parser.add_argument('--lr', type=float, default=5e-3, help='Learning rate.')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay for the optimizer.')
-    parser.add_argument('--epochs', type=int, default=1, help='Number of training epochs.')
+    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs.')
     parser.add_argument('--es_patience', type=int, default=20, help='Patience for early stopping.')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
     

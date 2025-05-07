@@ -97,6 +97,7 @@ def load_dt2_data(args):
     if os.path.exists(cache_path):
         print("Loading cached sets...")
         trainset = torch.load(f"cache/trainset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt",weights_only=False)
+        validset = torch.load(f"cache/validset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt",weights_only=False)
         testset = torch.load(f"cache/testset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt",weights_only=False)
     else:
         print("Creating and caching sets...")
@@ -125,38 +126,47 @@ def load_dt2_data(args):
         num_total_train = int(dataset.coords.shape[0] * 0.8)  # Use 80% for training
         # Random shuffle and split
         perm = np.random.RandomState(seed=args.random_seed).permutation(dataset.coords.shape[0])
-        trainset = SpatialDataset(
-            coords=dataset.coords[perm[:num_total_train]].numpy(),
-            features=dataset.features[perm[:num_total_train]].numpy(),
-            y=dataset.y[perm[:num_total_train]].numpy()
-        )
-        
-        #if args.normalize_elev:
-        num_total_train = len(trainset.y)
-        num_valid = args.validation_size * num_total_train
-        num_train = int(num_total_train - args.validation_size)
-        y_mean = trainset.y[0:num_train].mean(dim=0, keepdim=True)
-        y_std = trainset.y[0:num_train].std(dim=0, keepdim=True) + 1e-6
-        trainset.y = (trainset.y - y_mean) / y_std
-        print("NEW NORM IS COMING!")
-        trainset.y_mean = y_mean # CHECK THIS WRITING
-        trainset.y_std = y_std
-            
+
         testset = SpatialDataset(
             coords=dataset.coords[perm[num_total_train:]].numpy(),
             features=dataset.features[perm[num_total_train:]].numpy(),
             y=dataset.y[perm[num_total_train:]].numpy()
         )
-        testset.y = (testset.y - y_mean) / y_std 
+
+        #if args.normalize_elev:
+        num_valid = args.validation_size * num_total_train
+        num_train = int(num_total_train - num_valid)
+
+        trainset = SpatialDataset(
+            coords=dataset.coords[:num_train].numpy(),
+            features=dataset.features[:num_train].numpy(),
+            y=dataset.y[:num_train].numpy()
+        )
+
+        validset = SpatialDataset(
+            coords=dataset.coords[num_train:].numpy(),
+            features=dataset.features[num_train:].numpy(),
+            y=dataset.y[num_train:].numpy()
+        )
+            
+        print("NEW NORM IS COMING!")
+        y_mean = trainset.y[:num_train].mean(dim=0, keepdim=True)
+        y_std = trainset.y[:num_train].std(dim=0, keepdim=True) + 1e-6
+        trainset.y = (trainset.y - y_mean) / y_std
+        #validset.y = (validset.y - y_mean) / y_std
+        trainset.y_mean = y_mean # CHECK THIS WRITING
+        trainset.y_std = y_std
+        #testset.y = (testset.y - y_mean) / y_std 
         
         inspect_dataset(trainset, name="Train")
         inspect_dataset(testset, name="Test")
         torch.save(trainset, f"cache/trainset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt")
+        torch.save(testset, f"cache/validset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt")
         torch.save(testset, f"cache/testset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt")
         #set_plot_2(trainset)
         #set_plot_2(testset)
         # Feature normalization is already handled in DT2Dataset, so no need to repeat
-    return trainset, testset
+    return trainset, validset, testset
 
 def inspect_dataset(dataset, name="Train"):
     print(f"\n {name} Dataset Summary")
