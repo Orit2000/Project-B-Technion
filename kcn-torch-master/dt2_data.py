@@ -148,15 +148,22 @@ def load_dt2_data(args):
             features=dataset.features[num_train:].numpy(),
             y=dataset.y[num_train:].numpy()
         )
-            
+        # Log Range:
+        # min_y = torch.min(trainset.y)
+        # trainset.y= torch.log(trainset.y+min_y)
+        # testset.y = torch.log(testset.y+min_y)
+        # validset.y = torch.log(validset.y+min_y)
+
+        # print(f"NEW trainset range with log: [{torch.min(trainset.y), torch.max(trainset.y)}]")
+        # print(f"NEW valset range with log: [{torch.min(validset.y), torch.max(validset.y)}]")
         print("NEW NORM IS COMING!")
         y_mean = trainset.y[:num_train].mean(dim=0, keepdim=True)
         y_std = trainset.y[:num_train].std(dim=0, keepdim=True) + 1e-6
-        #trainset.y = (trainset.y - y_mean) / y_std
-        #validset.y = (validset.y - y_mean) / y_std
+        trainset.y = (trainset.y - y_mean) / y_std
+        validset.y = (validset.y - y_mean) / y_std
         trainset.y_mean = y_mean # CHECK THIS WRITING
         trainset.y_std = y_std
-        #testset.y = (testset.y - y_mean) / y_std 
+        testset.y = (testset.y - y_mean) / y_std 
         
         inspect_dataset(trainset, name="Train")
         inspect_dataset(testset, name="Test")
@@ -169,6 +176,7 @@ def load_dt2_data(args):
     return trainset, validset, testset
 
 def inspect_dataset(dataset, name="Train"):
+
     print(f"\n {name} Dataset Summary")
     print(f"➤ Number of points: {len(dataset)}")
     print(f"➤ Coords shape: {dataset.coords.shape}")

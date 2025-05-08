@@ -34,7 +34,8 @@ class KCN(torch.nn.Module):
                 with torch.no_grad():
                     self.graph_inputs = []
                     for i in range(self.trainset.coords.shape[0]):
-                        att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i],args.top_k)
+                        #att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i],args.top_k)
+                        att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i])
                         self.graph_inputs.append(att_graph)
                 torch.save(self.graph_inputs, cache_path)    
             print(f"len of graph_inputs:{len(self.graph_inputs)}",file=f)
@@ -88,7 +89,8 @@ class KCN(torch.nn.Module):
             with torch.no_grad():
                 batch_inputs = []
                 for i in range(len(coords)):
-                    att_graph = self.form_input_graph(coords[i], features[i], neighbors[i], top_k)
+                    #att_graph = self.form_input_graph(coords[i], features[i], neighbors[i], top_k)
+                    att_graph = self.form_input_graph(coords[i], features[i], neighbors[i])
                     batch_inputs.append(att_graph)
                     #show_sample_graph(model, index=0)
                 batch_inputs = self.collate_fn(batch_inputs) 
@@ -105,7 +107,7 @@ class KCN(torch.nn.Module):
 
         return pred
 # %%
-    def form_input_graph(self, coord, feature, neighbors,top_k):
+    def form_input_graph_mine(self, coord, feature, neighbors,top_k):
     
         output_dim = self.trainset.y.shape[1] 
 
@@ -176,6 +178,49 @@ class KCN(torch.nn.Module):
         adj_normalized = d_inv_sqrt[:, None] * adj * d_inv_sqrt[None, :]
     
         return adj_normalized
+    
+# %%
+    def form_input_graph(self, coord, feature, neighbors):
+        
+            output_dim = self.trainset.y.shape[1]
+
+            # label inputs
+            y = torch.concat([torch.zeros([1, output_dim]), self.trainset.y[neighbors]], axis=0)
+        
+            # indicator
+            indicator = torch.zeros([neighbors.shape[0] + 1])
+            indicator[0] = 1.0
+        
+            # feature inputs 
+            features = torch.concat([feature[None, :], self.trainset.features[neighbors]], axis=0)
+
+            # form graph features
+            graph_features = torch.concat([features, y, indicator[:, None]], axis=1)
+        
+
+            # compute a weighted graph from an rbf kernel
+            all_coords = torch.concat([coord[None, :], self.trainset.coords[neighbors]], axis=0)
+
+            # K(x, y) = exp(-gamma ||x-y||^2)
+            kernel = sklearn.metrics.pairwise.rbf_kernel(all_coords.numpy(), gamma=1 / (2 * self.length_scale ** 2))
+            ## the implementation here is the same as sklearn.metrics.pairwise.rbf_kernel
+            #row_norm = torch.sum(torch.square(all_coords), dim=1)
+            #dist = row_norm[:, None] - 2 * torch.matmul(all_coords, all_coords.t()) + row_norm[None, :]
+            #kernel = torch.exp(-self.length_scale * dist)
+
+            adj = torch.from_numpy(kernel)
+            # one choice is to normalize the adjacency matrix 
+            #curr_adj = normalize_adj(curr_adj + np.eye(curr_adj.shape[0]))
+        
+            # create a graph from it
+            nz = adj.nonzero(as_tuple=True)
+            edges = torch.stack(nz, dim=0)
+            edge_weights = adj[nz]
+        
+            # form the graph
+            attributed_graph = torch_geometric.data.Data(x=graph_features, edge_index=edges, edge_attr=edge_weights, y=None)
+        
+            return attributed_graph 
 
 # %%
 class GNN(torch.nn.Module):
@@ -292,3 +337,4 @@ def save_checkpoint(model, args, y_mean, y_std, train_loss=None, val_loss=None):
 
     torch.save(checkpoint, save_path)
     print(f"Checkpoint saved to: {save_path}")
+
