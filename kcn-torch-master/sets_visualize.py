@@ -10,9 +10,9 @@ import torch
 
 # Load sets (adjust paths if needed)
 torch.serialization.add_safe_globals([SpatialDataset])
-trainset = torch.load("cache/trainset_n32_e035_1arc_v3_cropped_k50_keep_n0.01.pt", map_location="cpu")
-validset = torch.load("cache/validset_n32_e035_1arc_v3_cropped_k50_keep_n0.01.pt", map_location="cpu")
-testset = torch.load("cache/testset_n32_e035_1arc_v3_cropped_k50_keep_n0.01.pt", map_location="cpu")
+trainset = torch.load("cache/trainset_n32_e035_1arc_v3_cropped_k50_keep_n0.05.pt", map_location="cpu")
+validset = torch.load("cache/validset_n32_e035_1arc_v3_cropped_k50_keep_n0.05.pt", map_location="cpu")
+testset = torch.load("cache/testset_n32_e035_1arc_v3_cropped_k50_keep_n0.05.pt", map_location="cpu")
 
 # Extract coordinates
 train_coords = trainset.coords.numpy()

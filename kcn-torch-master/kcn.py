@@ -167,18 +167,18 @@ class KCN(torch.nn.Module):
             attributed_graph = torch_geometric.data.Data(x=graph_features, edge_index=edges, edge_attr=edge_weights, y=None)
             print(f"attributed_graph shape:{edge_weights.shape}",file=f)
         return attributed_graph 
+
 # %%
     def _normalize_adj(self, adj):
         """Symmetrically normalize adjacency matrix."""
-    
-        row_sum = np.array(adj.sum(1))
-        d_inv_sqrt = np.power(row_sum, -0.5).flatten()
-        d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
-    
+
+        row_sum = torch.tensor(adj.sum(1))
+        d_inv_sqrt = torch.pow(row_sum, -0.5).flatten()
+        d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0.
+
         adj_normalized = d_inv_sqrt[:, None] * adj * d_inv_sqrt[None, :]
-    
+
         return adj_normalized
-    
 # %%
     def form_input_graph(self, coord, feature, neighbors):
         
@@ -210,8 +210,9 @@ class KCN(torch.nn.Module):
 
             adj = torch.from_numpy(kernel)
             # one choice is to normalize the adjacency matrix 
-            #curr_adj = normalize_adj(curr_adj + np.eye(curr_adj.shape[0]))
-        
+            #adj = adj + torch.eye(adj.shape[0])
+            #adj_n = self._normalize_adj(adj)
+            adj.fill_diagonal_(0.0)
             # create a graph from it
             nz = adj.nonzero(as_tuple=True)
             edges = torch.stack(nz, dim=0)
@@ -338,3 +339,13 @@ def save_checkpoint(model, args, y_mean, y_std, train_loss=None, val_loss=None):
     torch.save(checkpoint, save_path)
     print(f"Checkpoint saved to: {save_path}")
 
+def _normalize_adj(self, adj):
+    """Symmetrically normalize adjacency matrix."""
+
+    row_sum = np.array(adj.sum(1))
+    d_inv_sqrt = np.power(row_sum, -0.5).flatten()
+    d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
+
+    adj_normalized = d_inv_sqrt[:, None] * adj * d_inv_sqrt[None, :]
+
+    return adj_normalized
