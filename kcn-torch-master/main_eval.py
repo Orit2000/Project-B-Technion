@@ -32,6 +32,8 @@ test_preds = model(testset.coords, testset.features, 5)
 test_preds = test_preds * y_std + y_mean
 
 errors = abs(testset.y*y_std + y_mean  - test_preds)
+print(np.mean(errors.detach().numpy()))
+print(np.std(errors.detach().numpy()))
 
 # Plot
 plt.figure(figsize=(10, 8))
