@@ -51,11 +51,29 @@ args = argument.parse_opt()
 args.keep_n = 0.005*10
 print(args.dataset)
 print(args.n_neighbors)
-args.dataset = "n32_e035_1arc_v3_cropped"
+args.dataset = "n32_e035_1arc_v3"
 print(args.dataset)
 args.model = 'kcn'
-err = experiment.run_kcn(args)
-print('Model: {}, test error: {}\n'.format(args.model, err))
+test_error, test_preds, testset, y_mean, y_std = experiment.run_kcn(args)
+print('Model: {}, test error: {}\n'.format(args.model, test_error))
+
+# %%
+
+# Compute error
+errors = abs(testset.y*y_std + y_mean  - test_preds)
+
+# Plot
+plt.figure(figsize=(10, 8))
+sc = plt.scatter(testset.coords[:, 1], testset.coords[:, 0], c=errors, cmap="coolwarm", s=5)
+plt.colorbar(sc, label="Prediction Error (m)")
+plt.xlabel("Longitude")
+plt.ylabel("Latitude")
+plt.title("Spatial Distribution of Prediction Errors")
+plt.grid(True)
+plt.show()
+
+# %%
+
 
 # %% Shoing the train, test, val sets
 # # Load sets (adjust paths if needed)

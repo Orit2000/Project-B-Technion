@@ -25,7 +25,8 @@ class SpatialDataset(torch.utils.data.Dataset):
         self.coords = torch.Tensor(coords)
         self.features = torch.Tensor(features)
         self.y = torch.Tensor(y) 
-        
+        self.y_mean = torch.mean(torch.Tensor(y))
+        self.y_std = torch.std(torch.Tensor(y))
 
     def __len__(self):
         return self.coords.shape[0] 

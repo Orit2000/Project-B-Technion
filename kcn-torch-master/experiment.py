@@ -40,7 +40,7 @@ def run_kcn(args):
     
     if args.dataset == "bird_count":
         trainset, testset = data.load_bird_count_data(args)
-    elif args.dataset == "n32_e035_1arc_v3_cropped":
+    elif args.dataset == "n32_e035_1arc_v3":
         trainset, validset, testset = dt2_data.load_dt2_data(args)
     else: 
         raise Exception(f"The repo does not support this dataset yet: args.dataset={args.dataset}")
@@ -99,8 +99,9 @@ def run_kcn(args):
         '''
         # make predictions and calculate the error
         valid_pred = model(validset.coords, validset.features, args.top_k)
-        valid_pred = valid_pred * trainset.y_std + trainset.y_mean
+        #valid_pred = valid_pred * trainset.y_std + trainset.y_mean
         valid_error = loss_func(valid_pred, validset.y.to(args.device))
+        #valid_pred = valid_pred * trainset.y_std + trainset.y_mean
 
         epoch_valid_error.append(valid_error.item())
         print(f"Epoch: {epoch},", f"train error: {train_error},", f"validation error: {valid_error}")
@@ -125,12 +126,12 @@ def run_kcn(args):
     with open("logs/loss_tracking_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.txt", "a") as f:
         f.write(f"{epoch},{train_error:.6f},{valid_error.item():.6f}\n")
     test_preds = model(testset.coords, testset.features, args.top_k) #MAKE SURE THIS IS OK
-    test_preds = test_preds * trainset.y_std + trainset.y_mean
     test_error = loss_func(test_preds, testset.y.to(args.device))
+    test_preds = test_preds * trainset.y_std + trainset.y_mean
 
     print(f"Test error is {test_error}")
 
-    return test_error 
+    return test_error, test_preds, testset, trainset.y_mean, trainset.y_std       
 
 def show_sample_graph(model, index=0):
     graph = model.graph_inputs[index]

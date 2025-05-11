@@ -91,7 +91,7 @@ def load_dt2_data(args):
     # data file path
     os.makedirs("cache/", exist_ok=True)
     cache_path = f"cache/trainset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt"
-    dt2_file = os.path.join(args.data_path, args.dataset + ".tiff")
+    dt2_file = os.path.join(args.data_path, args.dataset + ".dt2")
     print(f"[DEBUG] Using dt2_file path: {dt2_file}")
     assert os.path.isfile(dt2_file), f"File does not exist: {dt2_file}"
     if os.path.exists(cache_path):
