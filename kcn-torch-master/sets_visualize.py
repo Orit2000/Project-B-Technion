@@ -10,9 +10,9 @@ import torch
 
 # Load sets (adjust paths if needed)
 torch.serialization.add_safe_globals([SpatialDataset])
-trainset = torch.load("cache/trainset_n32_e035_1arc_v3_cropped_k50_keep_n0.05.pt", map_location="cpu")
-validset = torch.load("cache/validset_n32_e035_1arc_v3_cropped_k50_keep_n0.05.pt", map_location="cpu")
-testset = torch.load("cache/testset_n32_e035_1arc_v3_cropped_k50_keep_n0.05.pt", map_location="cpu")
+trainset = torch.load("cache/trainset_n32_e035_1arc_v3_cropped_k50_keep_n0.005.pt", map_location="cpu")
+validset = torch.load("cache/validset_n32_e035_1arc_v3_cropped_k50_keep_n0.005.pt", map_location="cpu")
+testset = torch.load("cache/testset_n32_e035_1arc_v3_cropped_k50_keep_n0.005.pt", map_location="cpu")
 
 # Extract coordinates
 train_coords = trainset.coords.numpy()
@@ -39,11 +39,17 @@ plt.show()
 train_elev = trainset.y.numpy().flatten()
 valid_elev = validset.y.numpy().flatten()
 test_elev = testset.y.numpy().flatten()
+# Combine all elevation values to find global min/max
+all_elev = np.concatenate([train_elev, valid_elev])  # + test_elev if you want
+
+# Define shared bin edges
+num_bins = 50
+bin_edges = np.linspace(all_elev.min(), all_elev.max(), num_bins + 1)
 
 # Plot histograms
 plt.figure(figsize=(10, 6))
-plt.hist(valid_elev, bins=50, alpha=0.6, label='Validation', color='orange')
-plt.hist(train_elev, bins=50, alpha=0.6, label='Train', color='blue')
+plt.hist(valid_elev, bins=bin_edges, alpha=0.6, label='Validation', color='orange')
+plt.hist(train_elev, bins=bin_edges, alpha=0.6, label='Train', color='blue')
 #plt.hist(test_elev, bins=50, alpha=0.6, label='Test', color='red')
 
 plt.xlabel("Elevation (m)")

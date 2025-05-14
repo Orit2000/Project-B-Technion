@@ -2,8 +2,8 @@ from scipy.interpolate import griddata
 import numpy as np
 import torch
 from matplotlib import pyplot as plt
-trainset = torch.load(r"cache\trainset_n32_e035_1arc_v3_cropped_k50_keep_n0.05.pt",weights_only=False)
-testset = torch.load(r"cache\testset_n32_e035_1arc_v3_cropped_k50_keep_n0.05.pt",weights_only=False)
+trainset = torch.load(r"cache\trainset_n32_e035_1arc_v3_cropped_k50_keep_n0.005.pt",weights_only=False)
+testset = torch.load(r"cache\testset_n32_e035_1arc_v3_cropped_k50_keep_n0.005.pt",weights_only=False)
 # Convert tensors to numpy
 train_coords = trainset.coords.detach().cpu().numpy()
 train_y = (trainset.y * trainset.y_std + trainset.y_mean).detach().cpu().numpy().flatten()
@@ -13,12 +13,12 @@ test_y_true = (testset.y * trainset.y_std + trainset.y_mean).detach().cpu().nump
 
 # Perform interpolation: options = 'nearest', 'linear', 'cubic'
 interp_method = 'linear'
-test_y_interp = griddata(train_coords, train_y, test_coords, method=interp_method)
+test_y_interp = griddata(train_coords, train_y, test_coords,method=interp_method)
 
 # Where interpolation fails (NaNs), fall back to nearest neighbor
-nan_mask = np.isnan(test_y_interp)
-if np.any(nan_mask):
-    test_y_interp[nan_mask] = griddata(train_coords, train_y, test_coords[nan_mask], method='nearest')
+# nan_mask = np.isnan(test_y_interp)
+# if np.any(nan_mask):
+#     test_y_interp[nan_mask] = griddata(test_coords[nan_mask],train_coords, train_y, method='nearest')
 
 # Compute interpolation error
 interp_errors = np.abs(test_y_true - test_y_interp)
