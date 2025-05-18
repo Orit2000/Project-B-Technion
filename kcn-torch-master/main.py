@@ -49,13 +49,26 @@ import torch
 # %%
 args = argument.parse_opt()
 args.keep_n = 0.005*10/10
+args.form_input_graph = 'mine'
 print(args.dataset)
 print(args.n_neighbors)
 args.dataset = "n32_e035_1arc_v3_cropped"
 print(args.dataset)
 args.model = 'kcn'
-test_error, test_preds, testset, y_mean, y_std = experiment.run_kcn(args)
-print('Model: {}, test error: {}\n'.format(args.model, test_error))
+test_loss, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_train_loss, epoch_train_error = experiment.run_kcn(args)
+
+epochs = list(range(len(epoch_valid_loss)))
+
+plt.figure(figsize=(10, 6))
+plt.plot(epochs, epoch_train_loss, label='Train Loss', marker='o')
+plt.plot(epochs, epoch_valid_error, label='Validation Loss', marker='x')
+plt.xlabel("Epoch")
+plt.ylabel("MSE")
+plt.title("Training and Validation Error Over Epochs")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
 
 # %%
 

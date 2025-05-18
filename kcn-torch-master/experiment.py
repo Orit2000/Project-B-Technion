@@ -59,9 +59,10 @@ def run_kcn(args):
     loss_func = torch.nn.MSELoss(reduction='mean') # with normalization to the number of points
     #show_sample_graph(model, index=0)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
-
+    epoch_train_loss = []
     epoch_train_error = []
     epoch_valid_error = []
+    epoch_valid_loss = []
     best_val_loss = float('inf')
     # the training loop
     model.train()
@@ -79,7 +80,7 @@ def run_kcn(args):
             batch_coords, batch_features, batch_y = model.trainset[batch_ind]
 
             # make predictions and compute the average loss
-            pred = model(batch_coords, batch_features, args.top_k, batch_ind)
+            pred = model(batch_coords, batch_features,args, args.top_k, batch_ind)
             loss = loss_func(pred, batch_y.to(args.device))
 
             # update parameters
@@ -90,21 +91,36 @@ def run_kcn(args):
             # record the training error
             batch_train_error.append(loss.item())
 
-        train_error = sum(batch_train_error) / len(batch_train_error)
-        epoch_train_error.append(train_error)
+        train_loss = sum(batch_train_error) / len(batch_train_error)
+        epoch_train_loss.append(train_loss)
+        train_pred = model(trainset.coords, trainset.features, args,args.top_k)
+        train_pred = train_pred * trainset.y_std + trainset.y_mean
         '''
         # fetch the validation set
         valid_ind = range(num_train, num_total_train)
         valid_coords, valid_features, valid_y = model.trainset[valid_ind]
         '''
         # make predictions and calculate the error
-        valid_pred = model(validset.coords, validset.features, args.top_k)
+        valid_pred = model(validset.coords, validset.features, args,args.top_k)
         #valid_pred = valid_pred * trainset.y_std + trainset.y_mean
-        valid_error = loss_func(valid_pred, validset.y.to(args.device))
-        #valid_pred = valid_pred * trainset.y_std + trainset.y_mean
+        valid_loss = loss_func(valid_pred, validset.y.to(args.device))
+        valid_pred = valid_pred * trainset.y_std + trainset.y_mean
 
-        epoch_valid_error.append(valid_error.item())
-        print(f"Epoch: {epoch},", f"train error: {train_error},", f"validation error: {valid_error}")
+        # Accuracies metrics
+        valid_error = np.abs(validset.y.detach().numpy() - valid_pred.detach().numpy())
+        train_error = np.abs(trainset.y.detach().numpy() - train_pred.detach().numpy())
+        valid_mae = np.mean(valid_error)
+        train_mae = np.mean(train_error)
+        #rmse = np.sqrt(np.mean((y_true - y_pred) ** 2))
+        #r2 = 1 - np.sum((y_true - y_pred)**2) / np.sum((y_true - y_true.mean())**2)
+        #acc_5m = np.mean(np.abs(y_true - y_pred) < 5)
+
+        # Results saving
+        epoch_train_loss.append(train_loss)
+        epoch_train_error.append(train_mae)
+        epoch_valid_loss.append(valid_loss)
+        epoch_valid_error.append(valid_mae)
+        print(f"Epoch: {epoch},", f"train error: {train_loss},", f"trainging accuracy on mae: {train_mae}", f"validation error: {valid_loss}", f"validation accuracy on mae: {valid_mae}")
 
         # check whether to stop 
         if (epoch > args.es_patience) and \
@@ -117,21 +133,24 @@ def run_kcn(args):
         torch.save(model.state_dict(), f"{args.save_path}/weights_epoch{epoch}.pt")
 
         # Optionally save best one
-        if valid_error < best_val_loss:
-            best_val_loss = valid_error
+        if valid_loss < best_val_loss:
+            best_val_loss = valid_loss
             torch.save(model.state_dict(), f"{args.save_path}/best_model_epoch{epoch}.pt")
 
     # test the model
     model.eval()
     with open("logs/loss_tracking_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.txt", "a") as f:
-        f.write(f"{epoch},{train_error:.6f},{valid_error.item():.6f}\n")
-    test_preds = model(testset.coords, testset.features, args.top_k) #MAKE SURE THIS IS OK
-    test_error = loss_func(test_preds, testset.y.to(args.device))
+        f.write(f"{epoch},{train_loss:.6f},{valid_loss.item():.6f}\n")
+
+    
+    test_preds = model(testset.coords, testset.features, args, args.top_k) #MAKE SURE THIS IS OK
+    test_loss = loss_func(test_preds, testset.y.to(args.device))
     test_preds = test_preds * trainset.y_std + trainset.y_mean
+    test_mae = np.mean(np.abs(testset.y.detach().numpy() - valid_pred.detach().numpy()))
+    print(f"Test loss is {test_loss}")
+    print(f"Test error is {test_mae}")
 
-    print(f"Test error is {test_error}")
-
-    return test_error, test_preds, testset, trainset.y_mean, trainset.y_std       
+    return test_loss, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_train_loss, epoch_train_error
 
 def show_sample_graph(model, index=0):
     graph = model.graph_inputs[index]

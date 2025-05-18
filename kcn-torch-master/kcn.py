@@ -34,8 +34,10 @@ class KCN(torch.nn.Module):
                 with torch.no_grad():
                     self.graph_inputs = []
                     for i in range(self.trainset.coords.shape[0]):
-                        #att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i],args.top_k)
-                        att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i])
+                        if(args.form_input_graph == 'original'):
+                            att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i])
+                        if(args.form_input_graph == 'mine'):
+                            att_graph = self.form_input_graph_mine(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i],args.top_k)
                         self.graph_inputs.append(att_graph)
                 torch.save(self.graph_inputs, cache_path)    
             print(f"len of graph_inputs:{len(self.graph_inputs)}",file=f)
@@ -70,7 +72,7 @@ class KCN(torch.nn.Module):
         self.gnn = self.gnn.to(self.device)
 
 # %%
-    def forward(self, coords, features, top_k, train_indices=None):
+    def forward(self, coords, features, args, top_k, train_indices=None):
         if train_indices is not None:
             
             # if from training set, then read in pre-computed graphs
@@ -89,8 +91,12 @@ class KCN(torch.nn.Module):
             with torch.no_grad():
                 batch_inputs = []
                 for i in range(len(coords)):
-                    #att_graph = self.form_input_graph(coords[i], features[i], neighbors[i], top_k)
-                    att_graph = self.form_input_graph(coords[i], features[i], neighbors[i])
+                    if(args.form_input_graph == "original"):
+                            att_graph = self.form_input_graph(coords[i], features[i], neighbors[i])
+                    if(args.form_input_graph == "mine"):
+                            att_graph = self.form_input_graph_mine(coords[i], features[i], neighbors[i],args.top_k)
+                    #att_graph = self.form_input_graph(coords[i], features[i], neighbors[i])
+                    #att_graph = self.form_input_graph_mine(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i],args.top_k)
                     batch_inputs.append(att_graph)
                     #show_sample_graph(model, index=0)
                 batch_inputs = self.collate_fn(batch_inputs) 
@@ -137,15 +143,17 @@ class KCN(torch.nn.Module):
         #kernel = torch.exp(-self.length_scale * dist)
         ## Orit's
         #adj = torch.from_numpy(kernel)
-        adj = get_multihop_neighbors(torch.from_numpy(kernel), num_hops=3, top_k=top_k) #zeros out the weak edges to get a sparse matrix # ***PAYATTENTION***
+        adj = neighbors_reduction(torch.from_numpy(kernel), num_hops=3, top_k=top_k) #zeros out the weak edges to get a sparse matrix # ***PAYATTENTION***
         adj.fill_diagonal_(0.0)
+        adj_norm = self.normalize_row_adj(adj)
+        
         with open("logs/output.txt", "a") as f:
-            print(f"adj shape:{adj.shape}",file=f)
+            print(f"adj shape:{adj_norm.shape}",file=f)
             # one choice is to normalize the adjacency matrix 
             #curr_adj = normalize_adj(curr_adj + np.eye(curr_adj.shape[0]))
         
             # create a graph from it
-            nz = adj.nonzero(as_tuple=True) #Finds the positions of non-zero entries in adj, i.e., where edges exist. nz = (row_indices, col_indices)
+            nz = adj_norm.nonzero(as_tuple=True) #Finds the positions of non-zero entries in adj, i.e., where edges exist. nz = (row_indices, col_indices)
             #print(f"nz shape:{nz.shape}")
             edges = torch.stack(nz, dim=0) #Builds the edge_index tensor for PyG:
             '''
@@ -160,7 +168,7 @@ class KCN(torch.nn.Module):
             edges = torch.stack([sources, targets], dim=0)
             '''
             print(f"edges shape:{edges.shape}",file=f)
-            edge_weights = adj[nz] #Picks the values of the retained edges from adj, i.e., the actual weights of the edges in the graph.
+            edge_weights = adj_norm[nz] #Picks the values of the retained edges from adj, i.e., the actual weights of the edges in the graph.
             print(f"edge_weights shape:{edge_weights.shape}",file=f)
         
             # form the graph
@@ -169,16 +177,20 @@ class KCN(torch.nn.Module):
         return attributed_graph 
 
 # %%
-    def _normalize_adj(self, adj):
+    def normalize_adj(self, adj):
         """Symmetrically normalize adjacency matrix."""
 
-        row_sum = torch.tensor(adj.sum(1))
-        d_inv_sqrt = torch.pow(row_sum, -0.5).flatten()
-        d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0.
+        degree = adj.sum(dim=1)
+        d_inv_sqrt = torch.pow(degree, -0.5)
+        d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0.0
+        return d_inv_sqrt[:, None] * adj * d_inv_sqrt[None, :]
+    
+# %%
+    def normalize_row_adj(self, adj):
+        """Row-normalize adjacency matrix so each row sums to 1."""
+        row_sum = adj.sum(dim=1, keepdim=True)  # shape [N, 1]
+        return adj / (row_sum + 1e-9)           # avoid division by zero
 
-        adj_normalized = d_inv_sqrt[:, None] * adj * d_inv_sqrt[None, :]
-
-        return adj_normalized
 # %%
     def form_input_graph(self, coord, feature, neighbors):
         
@@ -275,19 +287,19 @@ class GNN(torch.nn.Module):
 
         return x
 # %%
-def get_multihop_neighbors(adj: torch.Tensor, num_hops: int = 3, top_k: int = 10):
+def neighbors_reduction(adj: torch.Tensor, num_hops: int = 3, top_k: int = 5):
     """
     Compute multi-hop neighbors up to a given number of hops.
     Args:
-        adj: [N, N] tensor, weighted adjacency matrix
+        adj: [N, N] tensor, weighted adjacency matrix, full graph
         num_hops: how many adjacency powers to consider
         top_k: maximum number of neighbors to keep per node
     Returns:
         new_adj: thresholded [N, N] tensor with multi-hop connections
     """
     N = adj.shape[0]
-    A_power = adj.clone()
-    combined_adj = adj.clone()
+    A_power = adj.clone() # Cloning ensures that the original adj stays untouched.
+    combined_adj = adj.clone() #  Cloning ensures that the original adj stays untouched.
 
     for hop in range(2, num_hops + 1):
         A_power = torch.matmul(A_power, adj)
@@ -339,13 +351,9 @@ def save_checkpoint(model, args, y_mean, y_std, train_loss=None, val_loss=None):
     torch.save(checkpoint, save_path)
     print(f"Checkpoint saved to: {save_path}")
 
-def _normalize_adj(self, adj):
-    """Symmetrically normalize adjacency matrix."""
 
-    row_sum = np.array(adj.sum(1))
-    d_inv_sqrt = np.power(row_sum, -0.5).flatten()
-    d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
-
-    adj_normalized = d_inv_sqrt[:, None] * adj * d_inv_sqrt[None, :]
-
-    return adj_normalized
+def normalize_symmetric(adj):
+    degree = adj.sum(dim=1)
+    d_inv_sqrt = torch.pow(degree, -0.5)
+    d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0.0
+    return d_inv_sqrt[:, None] * adj * d_inv_sqrt[None, :]
