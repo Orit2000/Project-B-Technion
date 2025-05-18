@@ -18,8 +18,8 @@ args.dataset = "n32_e035_1arc_v3_cropped"
 print(args.dataset)
 args.model = 'kcn'
 
-trainset = torch.load(r"cache\trainset_n32_e035_1arc_v3_cropped_k100_keep_n0.005.pt",weights_only=False)
-testset = torch.load(r"cache\testset_n32_e035_1arc_v3_cropped_k100_keep_n0.005.pt",weights_only=False)
+trainset = torch.load(r"cache\trainset_n32_e035_1arc_v3_cropped_k100_keep_n0.0005.pt",weights_only=False)
+testset = torch.load(r"cache\testset_n32_e035_1arc_v3_cropped_k100_keep_n0.0005.pt",weights_only=False)
 #  g-y_mean = trainset.y.mean(dim=0, keepdim=True)
 # y_std = trainset.y.std(dim=0, keepdim=True) + 1e-6
 y_std = trainset.y_std
