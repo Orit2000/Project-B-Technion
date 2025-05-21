@@ -26,8 +26,8 @@ def parse_opt():
     parser.add_argument('--n_neighbors', type=int, default=50, help='Number of neighbors')
     parser.add_argument('--top_k', type=int, default=5, help='Number of neighbors')
     parser.add_argument('--length_scale', default="auto", help='Length scale for RBF kernel. If set to "auto", then it will be set to the median of neighbor distances')
-    parser.add_argument('--hidden_sizes', type=list, default=[16, 32, 64], help='Number of units in hidden layers, also decide the number of layers')
-    parser.add_argument('--dropout', type=float, default=0.1, help='Dropout rate (1 - keep probability).')
+    parser.add_argument('--hidden_sizes', type=list, default=[64, 128, 256], help='Number of units in hidden layers, also decide the number of layers')
+    parser.add_argument('--dropout', type=float, default=0.01, help='Dropout rate (1 - keep probability).')
     parser.add_argument('--last_activation', type=str, default='none', help='Activation for the last layer')
     
     parser.add_argument('--loss_type', type=str, default='squared_error', help='Loss type') 

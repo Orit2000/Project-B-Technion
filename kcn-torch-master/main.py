@@ -50,6 +50,7 @@ import torch
 args = argument.parse_opt()
 args.keep_n = 0.005*10/10
 args.form_input_graph = 'mine'
+args.model = 'kcn'
 print(args.dataset)
 print(args.n_neighbors)
 args.dataset = "n32_e035_1arc_v3_cropped"

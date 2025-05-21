@@ -18,16 +18,16 @@ args.dataset = "n32_e035_1arc_v3_cropped"
 print(args.dataset)
 args.model = 'kcn'
 
-trainset = torch.load(r"cache\trainset_n32_e035_1arc_v3_cropped_k100_keep_n0.0005.pt",weights_only=False)
-testset = torch.load(r"cache\testset_n32_e035_1arc_v3_cropped_k100_keep_n0.0005.pt",weights_only=False)
+trainset = torch.load(r"cache\\trainset_n32_e035_1arc_v3_cropped_k50_keep_n0.005.pt",weights_only=False)
+testset = torch.load(r"cache\\testset_n32_e035_1arc_v3_cropped_k50_keep_n0.005.pt",weights_only=False)
 #  g-y_mean = trainset.y.mean(dim=0, keepdim=True)
 # y_std = trainset.y.std(dim=0, keepdim=True) + 1e-6
 y_std = trainset.y_std
 y_mean = trainset.y_mean
 model = kcn.KCN(trainset, args).to(args.device)
-model.load_state_dict(torch.load(r"saved_models/kcn_n32_e035_1arc_v3/weights_epoch25.pt"))
+model.load_state_dict(torch.load(r"saved_models/kcn_n32_e035_1arc_v3/weights_epoch20.pt"))
 model.eval()
-test_preds = model(testset.coords, testset.features, 5) 
+test_preds = model(testset.coords,testset.features, args, 5) 
 #test_error = loss_func(test_preds, testset.y.to(args.device))
 test_preds = test_preds * y_std + y_mean
 

@@ -136,24 +136,31 @@ class KCN(torch.nn.Module):
 
         # K(x, y) = exp(-gamma ||x-y||^2)
         kernel = sklearn.metrics.pairwise.rbf_kernel(all_coords.numpy(), gamma=1 / (2 * self.length_scale ** 2)) # A matrix shape ( # A matrix shape (neighbors.shape[0] + 1, (neighbors.shape[0] + 1)
+        np.fill_diagonal(kernel, 0.0)  # zero out diagonal BEFORE normalization
+        #kernel = kernel / kernel.sum(axis=1, keepdims=True)
         # This matrix has 1 on the diagonal and values under 1 in the other places
         ## the implementation here is the same as sklearn.metrics.pairwise.rbf_kernel
         #row_norm = torch.sum(torch.square(all_coords), dim=1)
         #dist = row_norm[:, None] - 2 * torch.matmul(all_coords, all_coords.t()) + row_norm[None, :]
         #kernel = torch.exp(-self.length_scale * dist)
         ## Orit's
-        #adj = torch.from_numpy(kernel)
-        adj = neighbors_reduction(torch.from_numpy(kernel), num_hops=3, top_k=top_k) #zeros out the weak edges to get a sparse matrix # ***PAYATTENTION***
-        adj.fill_diagonal_(0.0)
-        adj_norm = self.normalize_row_adj(adj)
-        
+        adj = torch.from_numpy(kernel)
+        #adj.fill_diagonal_(0.0)
+        # FIRST
+        #adj = neighbors_reduction(torch.from_numpy(kernel), num_hops=3, top_k=top_k) #zeros out the weak edges to get a sparse matrix # ***PAYATTENTION***
+        #adj.fill_diagonal_(0.0)
+        #adj_norm = self.normalize_row_adj(adj)
+        #SECOND
+        min_weight = 150
+        adj=min_length_symmetric(adj, min_weight)
+
         with open("logs/output.txt", "a") as f:
-            print(f"adj shape:{adj_norm.shape}",file=f)
+            print(f"adj shape:{adj.shape}",file=f)
             # one choice is to normalize the adjacency matrix 
             #curr_adj = normalize_adj(curr_adj + np.eye(curr_adj.shape[0]))
         
             # create a graph from it
-            nz = adj_norm.nonzero(as_tuple=True) #Finds the positions of non-zero entries in adj, i.e., where edges exist. nz = (row_indices, col_indices)
+            nz = adj.nonzero(as_tuple=True) #Finds the positions of non-zero entries in adj, i.e., where edges exist. nz = (row_indices, col_indices)
             #print(f"nz shape:{nz.shape}")
             edges = torch.stack(nz, dim=0) #Builds the edge_index tensor for PyG:
             '''
@@ -168,7 +175,7 @@ class KCN(torch.nn.Module):
             edges = torch.stack([sources, targets], dim=0)
             '''
             print(f"edges shape:{edges.shape}",file=f)
-            edge_weights = adj_norm[nz] #Picks the values of the retained edges from adj, i.e., the actual weights of the edges in the graph.
+            edge_weights = adj[nz] #Picks the values of the retained edges from adj, i.e., the actual weights of the edges in the graph.
             print(f"edge_weights shape:{edge_weights.shape}",file=f)
         
             # form the graph
@@ -277,12 +284,13 @@ class GNN(torch.nn.Module):
 
             elif self.model_type == 'kcn_gat':
                 x, (edge_index, attention_weights) = conv_layer(x, edge_index, edge_attr=edge_weight, return_attention_weights=True)
-                #edge_weight = ttention_weights
+                edge_weight = attention_weights
 
             elif self.model_type == 'kcn_sage':
                 x = conv_layer(x, edge_index)
 
-            x = torch.nn.functional.relu(x)
+            #x = torch.nn.functional.relu(x)
+            x = torch.nn.functional.leaky_relu(x)
             x = torch.nn.functional.dropout(x, p=self.dropout, training=self.training)
 
         return x
@@ -357,3 +365,38 @@ def normalize_symmetric(adj):
     d_inv_sqrt = torch.pow(degree, -0.5)
     d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0.0
     return d_inv_sqrt[:, None] * adj * d_inv_sqrt[None, :]
+
+
+def min_length_symmetric(adj, min_weight):
+    """
+    Remove weak connections (< min_weight) and apply symmetric normalization.
+
+    Args:
+        adj (torch.Tensor): Raw adjacency matrix
+        min_weight (float): Minimum allowed edge weight
+    Returns:
+        torch.Tensor: Symmetrically normalized adjacency matrix
+    """
+    # Zero out weak edges
+    adj_thresholded = adj.clone() # creates a copy of the matrix
+    #adj_thresholded[adj_thresholded < min_weight] = 0.0 # zeros too small weights
+
+    # First Option:
+        # Symmetric normalization: D^{-1/2} A D^{-1/2}
+        # row_sum = torch.sum(adj_thresholded, dim=1)
+        # d_inv_sqrt = torch.pow(row_sum, -0.5)
+        # d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0.0
+        # d_mat = torch.diag(d_inv_sqrt)
+        #adj_normalized = d_mat @ adj_thresholded @ d_mat
+    
+    # Second Option:
+    # row_max = torch.max(adj_thresholded, dim=1).values  # shape: (N,)
+    # #row_max[row_max == 0] = 1.0  # Avoid division by zero
+    # adj_normalized = adj_thresholded / row_max[:, None]
+
+    # Third Option:
+    adj_normalized = adj_thresholded / min_weight
+
+    return adj_normalized
+
+
