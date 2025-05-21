@@ -58,7 +58,7 @@ def run_kcn(args):
 
     loss_func = torch.nn.MSELoss(reduction='mean') # with normalization to the number of points
     #show_sample_graph(model, index=0)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     epoch_train_loss = []
     epoch_train_error = []
     epoch_valid_error = []

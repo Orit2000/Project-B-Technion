@@ -8,10 +8,10 @@ import torch.serialization
 
 
 # Load saved graphs (adjust path and k, keep_n accordingly)
-graph_inputs = torch.load("cache/graph_inputs_n32_e035_1arc_v3_cropped_k50_keep_n0.005.pt", weights_only=False ,map_location="cpu")
+graph_inputs = torch.load("cache/graph_inputs_n32_e035_1arc_v3_cropped_k100_keep_n0.005.pt", weights_only=False ,map_location="cpu")
 
 # Choose an index to visualize (e.g., 0, or a random sample)
-idx = 1
+idx = 2
 graph = graph_inputs[idx]
 
 # Convert to NetworkX graph (optional: to_undirected=True for clarity)

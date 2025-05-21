@@ -147,12 +147,12 @@ class KCN(torch.nn.Module):
         adj = torch.from_numpy(kernel)
         #adj.fill_diagonal_(0.0)
         # FIRST
-        #adj = neighbors_reduction(torch.from_numpy(kernel), num_hops=3, top_k=top_k) #zeros out the weak edges to get a sparse matrix # ***PAYATTENTION***
+        adj = neighbors_reduction(torch.from_numpy(kernel), num_hops=5, top_k=top_k) #zeros out the weak edges to get a sparse matrix # ***PAYATTENTION***
         #adj.fill_diagonal_(0.0)
         #adj_norm = self.normalize_row_adj(adj)
         #SECOND
-        min_weight = 150
-        adj=min_length_symmetric(adj, min_weight)
+        min_weight = 10
+        #adj=min_length_symmetric(adj, min_weight)
 
         with open("logs/output.txt", "a") as f:
             print(f"adj shape:{adj.shape}",file=f)
@@ -290,7 +290,7 @@ class GNN(torch.nn.Module):
                 x = conv_layer(x, edge_index)
 
             #x = torch.nn.functional.relu(x)
-            x = torch.nn.functional.leaky_relu(x)
+            x = torch.nn.functional.leaky_relu(x) # First x is in the shape batch_size*(num_neighbors+1)
             x = torch.nn.functional.dropout(x, p=self.dropout, training=self.training)
 
         return x
@@ -305,13 +305,22 @@ def neighbors_reduction(adj: torch.Tensor, num_hops: int = 3, top_k: int = 5):
     Returns:
         new_adj: thresholded [N, N] tensor with multi-hop connections
     """
+    decay=0.5
     N = adj.shape[0]
     A_power = adj.clone() # Cloning ensures that the original adj stays untouched.
     combined_adj = adj.clone() #  Cloning ensures that the original adj stays untouched.
 
-    for hop in range(2, num_hops + 1):
-        A_power = torch.matmul(A_power, adj)
-        combined_adj += A_power
+    # for hop in range(2, num_hops + 1):
+    #       A_power = 1/torch.sum(A_power)*torch.matmul(A_power, adj)
+    #       combined_adj += A_power
+    #       combined_adj = combined_adj / combined_adj.max()
+
+    # for hop in range(2, num_hops + 1):
+    #     A_power = torch.matmul(A_power, adj)
+    #     combined_adj += (decay ** (hop - 1)) * A_power
+
+    # # Optional: rescale to keep weights in [0, 1]
+    # combined_adj = combined_adj / combined_adj.max()
 
     # Keep top-k connections per row
     for i in range(N):
