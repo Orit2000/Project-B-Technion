@@ -56,13 +56,13 @@ print(args.n_neighbors)
 args.dataset = "n32_e035_1arc_v3_cropped"
 print(args.dataset)
 args.model = 'kcn'
-test_loss, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_train_loss, epoch_train_error = experiment.run_kcn(args)
+test_error, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_valid_mse, epoch_valid_map, epoch_train_loss, epoch_train_error, epoch_train_mse, epoch_train_map = experiment.run_kcn(args)
 
 epochs = list(range(len(epoch_valid_loss)))
 
 plt.figure(figsize=(10, 6))
 plt.plot(epochs, epoch_train_loss, label='Train Loss', marker='o')
-plt.plot(epochs, epoch_valid_error, label='Validation Loss', marker='x')
+plt.plot(epochs, epoch_valid_loss, label='Validation Loss', marker='x')
 plt.xlabel("Epoch")
 plt.ylabel("MSE")
 plt.title("Training and Validation Error Over Epochs")
