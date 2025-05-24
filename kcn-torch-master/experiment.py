@@ -57,7 +57,7 @@ def run_kcn(args):
     model = kcn.KCN(trainset, args)
     model = model.to(args.device)
 
-    loss_func = torch.nn.MSELoss(reduction='sum') # with normalization to the number of points
+    loss_func = torch.nn.MSELoss(reduction='mean') # with normalization to the number of points
     #show_sample_graph(model, index=0)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     epoch_train_loss = []
@@ -134,7 +134,7 @@ def run_kcn(args):
             #acc_5m = np.mean(np.abs(y_true - y_pred) < 5)
 
             # Results saving
-            epoch_train_loss.append(train_loss)
+            #epoch_train_loss.append(train_loss)
             epoch_train_map.append(train_map)
             epoch_valid_loss.append(valid_loss)
             epoch_valid_map.append(valid_map)
