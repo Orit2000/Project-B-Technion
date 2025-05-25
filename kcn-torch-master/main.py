@@ -48,14 +48,13 @@ import torch
 
 # %%
 args = argument.parse_opt()
-args.keep_n = 0.005*10/10
+args.keep_n = 0.005/4
 args.form_input_graph = 'mine'
-args.model = 'kcn'
+args.model = 'kcn_gat'
 print(args.dataset)
 print(args.n_neighbors)
 args.dataset = "n32_e035_1arc_v3_cropped"
 print(args.dataset)
-args.model = 'kcn'
 test_error, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_valid_mse, epoch_valid_map, epoch_train_loss, epoch_train_error, epoch_train_mse, epoch_train_map = experiment.run_kcn(args)
 
 epochs = list(range(len(epoch_valid_loss)))
@@ -64,12 +63,64 @@ plt.figure(figsize=(10, 6))
 plt.plot(epochs, epoch_train_loss, label='Train Loss', marker='o')
 plt.plot(epochs, epoch_valid_loss, label='Validation Loss', marker='x')
 plt.xlabel("Epoch")
-plt.ylabel("MSE")
-plt.title("Training and Validation Error Over Epochs")
+plt.ylabel("MSE Loss")
+plt.title("Training and Validation Loss Over Epochs")
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
 plt.show()
+
+# plt.figure(figsize=(10, 6))
+# plt.plot(epochs, epoch_train_error, label='Train Loss', marker='o')
+# plt.plot(epochs, epoch_valid_error, label='Validation Loss', marker='x')
+# plt.xlabel("Epoch")
+# plt.ylabel("Error: Estimated - True")
+# plt.title("Training and Validation Error: Estimated - True")
+# plt.legend()
+# plt.grid(True)
+# plt.tight_layout()
+# plt.show()
+
+plt.figure(figsize=(10, 6))
+plt.plot(epochs, epoch_train_mse, label='Train Loss', marker='o')
+plt.plot(epochs, epoch_valid_mse, label='Validation Loss', marker='x')
+plt.xlabel("Epoch")
+plt.ylabel("Self MSE Defnition")
+plt.title("Training and Validation Self MSE Defnition")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+plt.figure(figsize=(10, 6))
+plt.plot(epochs, epoch_train_map, label='Train Loss', marker='o')
+plt.plot(epochs, epoch_valid_map, label='Validation Loss', marker='x')
+plt.xlabel("Epoch")
+plt.ylabel("Self MAP Defnition")
+plt.title("Training and Validation Self MAP Defnition")
+plt.legend()
+plt.grid(True)
+plt.tight_layout()
+plt.show()
+
+# Plot
+plt.figure(figsize=(10, 8))
+sc = plt.scatter(testset.coords[:, 1].numpy(), testset.coords[:, 0].numpy(), c=test_error.detach().numpy(), cmap="coolwarm", s=5)
+plt.colorbar(sc, label="Prediction Error (m)")
+plt.xlabel("Longitude")
+plt.ylabel("Latitude")
+plt.title("Spatial Distribution of Prediction Errors")
+plt.grid(True)
+plt.show()
+
+
+plt.hist(test_error.detach().numpy(), bins=100, color='gray')
+plt.title("Prediction Error Histogram")
+plt.xlabel("Error (Prediction - True)")
+plt.ylabel("Frequency")
+plt.grid(True)
+plt.show()
+
 
 # %%
 

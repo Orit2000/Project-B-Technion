@@ -37,7 +37,7 @@ class KCN(torch.nn.Module):
                         if(args.form_input_graph == 'original'):
                             att_graph = self.form_input_graph(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i])
                         if(args.form_input_graph == 'mine'):
-                            att_graph = self.form_input_graph_mine(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i],args.top_k)
+                            att_graph = self.form_input_graph_mine(self.trainset.coords[i],self.trainset.y[i], self.trainset.features[i], self.train_neighbors[i],args.top_k)
                         self.graph_inputs.append(att_graph)
                 torch.save(self.graph_inputs, cache_path)    
             print(f"len of graph_inputs:{len(self.graph_inputs)}",file=f)
@@ -72,7 +72,7 @@ class KCN(torch.nn.Module):
         self.gnn = self.gnn.to(self.device)
 
 # %%
-    def forward(self, coords, features, args, top_k, train_indices=None):
+    def forward(self, coords, y,features, args, top_k, train_indices=None):
         if train_indices is not None:
             
             # if from training set, then read in pre-computed graphs
@@ -94,7 +94,8 @@ class KCN(torch.nn.Module):
                     if(args.form_input_graph == "original"):
                             att_graph = self.form_input_graph(coords[i], features[i], neighbors[i])
                     if(args.form_input_graph == "mine"):
-                            att_graph = self.form_input_graph_mine(coords[i], features[i], neighbors[i],args.top_k)
+                            #print(f"Y is: {y[i]}")
+                            att_graph = self.form_input_graph_mine(coords[i], y[i],features[i], neighbors[i],args.top_k)
                     #att_graph = self.form_input_graph(coords[i], features[i], neighbors[i])
                     #att_graph = self.form_input_graph_mine(self.trainset.coords[i], self.trainset.features[i], self.train_neighbors[i],args.top_k)
                     batch_inputs.append(att_graph)
@@ -113,13 +114,15 @@ class KCN(torch.nn.Module):
 
         return pred
 # %%
-    def form_input_graph_mine(self, coord, feature, neighbors,top_k):
+    def form_input_graph_mine(self, coord, y_in, feature, neighbors,top_k):
     
-        output_dim = self.trainset.y.shape[1] 
-
+        #output_dim = self.trainset.y.shape[1] 
+        output_dim = self.trainset.y.shape[1]
+        #print(f"Y is:{y_in}")
         # label inputs
+        #y_in.view(1, -1)
         y = torch.concat([torch.zeros([1, output_dim]), self.trainset.y[neighbors]], axis=0) #[0, y_neighbor_1, y_neigbor_2,...], shape: 1x(output_dim*(1+len(neighbors)))
-    
+
         # indicator
         indicator = torch.zeros([neighbors.shape[0] + 1])
         indicator[0] = 1.0 #[1,0,0,0,0,0], shape: 1*(neighbors.shape[0] + 1)
@@ -317,7 +320,7 @@ def neighbors_reduction(adj: torch.Tensor, num_hops: int = 3, top_k: int = 5):
 
     # for hop in range(2, num_hops + 1):
     #     A_power = torch.matmul(A_power, adj)
-    #     combined_adj += (decay ** (hop - 1)) * A_power
+    #     combined_adj += A_power#(decay ** (hop - 1)) * A_power
 
     # # Optional: rescale to keep weights in [0, 1]
     # combined_adj = combined_adj / combined_adj.max()

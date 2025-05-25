@@ -4,6 +4,8 @@ import numpy as np
 import torch
 import matplotlib
 from matplotlib import pyplot as plt
+from sklearn.metrics import mean_squared_error
+#mse = mean_squared_error(targets, predictions)
 #matplotlib.use("TkAgg")  # Force GUI backend
 
 # Accuracy Metrics
@@ -15,9 +17,9 @@ def MSE(y_true, y_pred):
 def MAP(y_true, y_pred):
     return np.sum(np.abs(y_true - y_pred))/len(y_true)
 
-trainset = torch.load(r"./cache/trainset_n32_e035_1arc_v3_cropped_k100_keep_n0.005.pt",weights_only=False)
-validset = torch.load(r"./cache/validset_n32_e035_1arc_v3_cropped_k100_keep_n0.005.pt",weights_only=False)
-testset = torch.load(r"./cache/testset_n32_e035_1arc_v3_cropped_k100_keep_n0.005.pt",weights_only=False)
+trainset = torch.load(r"./cache/trainset_n32_e035_1arc_v3_cropped_k50_keep_n0.00125.pt",weights_only=False)
+validset = torch.load(r"./cache/validset_n32_e035_1arc_v3_cropped_k50_keep_n0.00125.pt",weights_only=False)
+testset = torch.load(r"./cache/testset_n32_e035_1arc_v3_cropped_k50_keep_n0.00125.pt",weights_only=False)
 
 # Convert tensors to numpy
 train_coords = trainset.coords.detach().cpu().numpy()
@@ -38,14 +40,14 @@ test_y_interp = griddata(train_coords, train_y, test_coords,method=interp_method
 # Valid
 interp_map_valid = MAP(valid_y_true, valid_y_interp)
 interp_mse_valid = MSE(valid_y_true, valid_y_interp)
-print(f"mean mse on valid: {interp_mse_valid}")
-print(f"mean map on valid: {interp_map_valid}")
+print(f"mse on valid: {interp_mse_valid}")
+print(f"map on valid: {interp_map_valid}")
 
 # Test
 interp_map_test = MAP(test_y_true, test_y_interp)
 interp_mse_test = MSE(test_y_true, test_y_interp)
-print(f"mean mse on test: {interp_mse_test}")
-print(f"mean map on test: {interp_map_test}")
+print(f"mse on test: {interp_mse_test}")
+print(f"map on test: {interp_map_test}")
 
 #
 test_error = test_y_true - test_y_interp

@@ -8,7 +8,14 @@ import networkx as nx
 import matplotlib.pyplot as plt
 from torch_geometric.utils import to_networkx
 import os
-from basic_interp import MAP, MSE
+
+def MSE(y_true, y_pred):
+    return np.mean((y_true - y_pred) ** 2)
+#def MAPE(y_true, y_pred):
+    
+    
+def MAP(y_true, y_pred):
+    return np.sum(np.abs(y_true - y_pred))/len(y_true)
 
 def run_kcn(args):
     """ Train and test a KCN model on a train-test split  
@@ -84,8 +91,8 @@ def run_kcn(args):
             batch_coords, batch_features, batch_y = model.trainset[batch_ind]
 
             # make predictions and compute the average loss
-            pred = model(batch_coords, batch_features,args, args.top_k, batch_ind)
-            loss = loss_func(pred, batch_y.to(args.device))
+            pred = model(batch_coords, batch_y, batch_features,args, args.top_k, batch_ind)
+            loss = loss_func(pred.squeeze(), batch_y.to(args.device).squeeze())
 
             # update parameters
             optimizer.zero_grad()
@@ -94,18 +101,19 @@ def run_kcn(args):
 
             # record the training error
             batch_train_error.append(loss.item())
-
-        train_loss = sum(batch_train_error) / len(batch_train_error)
-        epoch_train_loss.append(train_loss)
+        with torch.no_grad():
+            train_loss = sum(batch_train_error) / len(batch_train_error)
+            epoch_train_loss.append(train_loss)
         
         # Compute and store training predictions
         model.eval()
         with torch.no_grad():
-            train_pred = model(trainset.coords, trainset.features, args,args.top_k)
+            #print(trainset.y)
+            train_pred = model(trainset.coords, trainset.y, trainset.features, args,args.top_k)
 
             # Move y_std and y_mean to the same device
-            y_std = trainset.y_std.to(args.device)
-            y_mean = trainset.y_mean.to(args.device)
+            y_std = trainset.y_std.cpu().numpy().squeeze()
+            y_mean = trainset.y_mean.cpu().numpy().squeeze()
 
             train_pred = train_pred * y_std + y_mean
         '''
@@ -116,19 +124,19 @@ def run_kcn(args):
         model.eval()
         with torch.no_grad():
             # make predictions and calculate the error
-            valid_pred = model(validset.coords, validset.features, args,args.top_k)
+            valid_pred = model(validset.coords, validset.y, validset.features, args,args.top_k)
             #valid_pred = valid_pred * trainset.y_std + trainset.y_mean
             valid_loss = loss_func(valid_pred, validset.y.to(args.device))
             valid_pred = valid_pred * trainset.y_std.to(args.device) + trainset.y_mean.to(args.device)
-
-            # Accuracies metrics:
-            valid_error = validset.y.detach().cpu().numpy() - valid_pred.detach().cpu().numpy()
-            train_error = trainset.y.detach().cpu().numpy() - train_pred.detach().cpu().numpy()
             
-            valid_mse = MSE(validset.y.detach().cpu().numpy(), valid_pred.detach().cpu().numpy())
-            train_mse = MSE(trainset.y.detach().cpu().numpy(), train_pred.detach().cpu().numpy())
-            valid_map = MAP(validset.y.detach().cpu().numpy(), valid_pred.detach().cpu().numpy())
-            train_map = MAP(trainset.y.detach().cpu().numpy(), train_pred.detach().cpu().numpy())
+            # Accuracies metrics:
+            valid_error = validset.y.detach().cpu().numpy()* y_std + y_mean - valid_pred.detach().cpu().numpy()
+            train_error = trainset.y.detach().cpu().numpy()* y_std + y_mean - train_pred.detach().cpu().numpy()
+            
+            valid_mse = MSE(validset.y.detach().cpu().numpy()* y_std + y_mean, valid_pred.detach().cpu().numpy())
+            train_mse = MSE(trainset.y.detach().cpu().numpy()* y_std + y_mean, train_pred.detach().cpu().numpy())
+            valid_map = MAP(validset.y.detach().cpu().numpy()* y_std + y_mean, valid_pred.detach().cpu().numpy())
+            train_map = MAP(trainset.y.detach().cpu().numpy()* y_std + y_mean, train_pred.detach().cpu().numpy())
             #rmse = np.sqrt(np.mean((y_true - y_pred) ** 2))
             #r2 = 1 - np.sum((y_true - y_pred)**2) / np.sum((y_true - y_true.mean())**2)
             #acc_5m = np.mean(np.abs(y_true - y_pred) < 5)
@@ -168,13 +176,14 @@ def run_kcn(args):
         with open("logs/loss_tracking_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.txt", "a") as f:
             f.write(f"{epoch},{train_loss:.6f},{valid_loss.item():.6f}\n")
 
-        
-        test_preds = model(testset.coords, testset.features, args, args.top_k) #MAKE SURE THIS IS OK
+        y_zeros = torch.zeros(testset.y.shape[0])
+        print(f"Y_Zeros:{y_zeros}")
+        test_preds = model(testset.coords, y_zeros,testset.features, args, args.top_k) #MAKE SURE THIS IS OK
         test_loss = loss_func(test_preds, testset.y.to(args.device))
         test_preds = test_preds.to(args.device) * trainset.y_std.to(args.device) + trainset.y_mean.to(args.device)
-        test_error = testset.y.detach().cpu().numpy() - test_preds.detach().cpu().numpy()
-        test_mse = MSE(testset.y.detach().cpu().numpy(), test_preds.detach().cpu().numpy())
-        test_map = MAP(testset.y.detach().cpu().numpy(), test_preds.detach().cpu().numpy())
+        test_error = testset.y.detach().cpu().numpy() * y_std + y_mean - test_preds.detach().cpu().numpy()
+        test_mse = MSE(testset.y.detach().cpu().numpy()* y_std + y_mean, test_preds.detach().cpu().numpy())
+        test_map = MAP(testset.y.detach().cpu().numpy()* y_std + y_mean, test_preds.detach().cpu().numpy())
         #test_map = np.mean(np.abs(testset.y.detach().numpy() - test_pred.detach().numpy()))
         print(f"Test loss is {test_loss}")
         print(f"Test MSE is {test_mse}")
