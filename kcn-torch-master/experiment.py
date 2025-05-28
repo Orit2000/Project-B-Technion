@@ -14,7 +14,7 @@ def MSE(y_true, y_pred):
 #def MAPE(y_true, y_pred):
     
     
-def MAP(y_true, y_pred):
+def MAE(y_true, y_pred):
     return np.sum(np.abs(y_true - y_pred))/len(y_true)
 
 def run_kcn(args):
@@ -72,9 +72,9 @@ def run_kcn(args):
     epoch_valid_error = []
     epoch_valid_loss = []
     epoch_train_mse = []
-    epoch_train_map = []
+    epoch_train_mae = []
     epoch_valid_mse = []
-    epoch_valid_map = []
+    epoch_valid_mae = []
     best_val_loss = float('inf')
     # the training loop
     model.train()
@@ -135,23 +135,23 @@ def run_kcn(args):
             
             valid_mse = MSE(validset.y.detach().cpu().numpy()* y_std + y_mean, valid_pred.detach().cpu().numpy())
             train_mse = MSE(trainset.y.detach().cpu().numpy()* y_std + y_mean, train_pred.detach().cpu().numpy())
-            valid_map = MAP(validset.y.detach().cpu().numpy()* y_std + y_mean, valid_pred.detach().cpu().numpy())
-            train_map = MAP(trainset.y.detach().cpu().numpy()* y_std + y_mean, train_pred.detach().cpu().numpy())
+            valid_mae = MAE(validset.y.detach().cpu().numpy()* y_std + y_mean, valid_pred.detach().cpu().numpy())
+            train_mae = MAE(trainset.y.detach().cpu().numpy()* y_std + y_mean, train_pred.detach().cpu().numpy())
             #rmse = np.sqrt(np.mean((y_true - y_pred) ** 2))
             #r2 = 1 - np.sum((y_true - y_pred)**2) / np.sum((y_true - y_true.mean())**2)
             #acc_5m = np.mean(np.abs(y_true - y_pred) < 5)
 
             # Results saving
             #epoch_train_loss.append(train_loss)
-            epoch_train_map.append(train_map)
+            epoch_train_mae.append(train_mae)
             epoch_valid_loss.append(valid_loss)
-            epoch_valid_map.append(valid_map)
+            epoch_valid_mae.append(valid_mae)
             epoch_train_mse.append(train_mse)
             epoch_valid_mse.append(valid_mse)
             epoch_train_error.append(train_error)
             epoch_valid_error.append(valid_error)
   
-            print(f"Epoch: {epoch},", f"train loss: {train_loss},", f"train mse: {train_mse}", f"train map: {train_map}", f"validation loss: {valid_loss}",f"valid mse: {valid_mse}", f"valid map: {valid_map}")
+            print(f"Epoch: {epoch},", f"train loss: {train_loss},", f"train mse: {train_mse}", f"train mae: {train_mae}", f"validation loss: {valid_loss}",f"valid mse: {valid_mse}", f"valid mae: {valid_mae}")
             print(f"Train Mean Err: {np.mean(train_error)},", f"Train STD Err: {np.std(train_error)},", f"Val Mean Err: {np.mean(valid_error)},", f"Val STD Err: {np.std(valid_error)}")
         model.train()
         # check whether to stop 
@@ -183,14 +183,14 @@ def run_kcn(args):
         test_preds = test_preds.to(args.device) * trainset.y_std.to(args.device) + trainset.y_mean.to(args.device)
         test_error = testset.y.detach().cpu().numpy() * y_std + y_mean - test_preds.detach().cpu().numpy()
         test_mse = MSE(testset.y.detach().cpu().numpy()* y_std + y_mean, test_preds.detach().cpu().numpy())
-        test_map = MAP(testset.y.detach().cpu().numpy()* y_std + y_mean, test_preds.detach().cpu().numpy())
-        #test_map = np.mean(np.abs(testset.y.detach().numpy() - test_pred.detach().numpy()))
+        test_mae = MAE(testset.y.detach().cpu().numpy()* y_std + y_mean, test_preds.detach().cpu().numpy())
+        #test_mae = np.mean(np.abs(testset.y.detach().numpy() - test_pred.detach().numpy()))
         print(f"Test loss is {test_loss}")
         print(f"Test MSE is {test_mse}")
-        print(f"Test MAP is {test_map}")
+        print(f"Test MAE is {test_mae}")
         print(f"Test Mean error is {np.mean(test_error)},",f"Test STD error is {np.std(test_error)}" )
 
-    return test_error, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_valid_mse, epoch_valid_map, epoch_train_loss, epoch_train_error, epoch_train_mse, epoch_train_map
+    return test_error, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_valid_mse, epoch_valid_mae, epoch_train_loss, epoch_train_error, epoch_train_mse, epoch_train_mae
 
 def show_sample_graph(model, index=0):
     graph = model.graph_inputs[index]

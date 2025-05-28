@@ -1,49 +1,14 @@
 import numpy as np
 import torch
 from argument import parse_opt 
-from experiment import run_kcn
+from experiment_with_cp import run_kcn
 import numpy as np
 import pandas as pd
 from data import SpatialDataset
 from matplotlib import pyplot as plt
 import dt2_data
 import argument
-import experiment
 import torch
-
-# # repeat the experiment in the paper
-# def random_runs(args):
-#     test_errors = []
-#     for args.random_seed in range(10):
-#         np.random.seed(args.random_seed)
-#         torch.manual_seed(args.random_seed)
-    
-#         err = run_kcn(args)
-#         test_errors.append(err)
-    
-#     test_errors = np.array(test_errors)
-#     return test_errors
- 
-# if __name__ == "__main__":
-
-#     args = parse_opt()
-#     print(args)
-
-#     # set random seeds
-#     np.random.seed(args.random_seed)
-#     torch.manual_seed(args.random_seed)
-    
-#     # run experiment on one train-test split
-#     err = run_kcn(args)
-#     print('Model: {}, test error: {}\n'.format(args.model, err))
-    
-    
-    ## run all experiments on one dataset
-    #model_error = dict()
-    #for args.model in ["kcn", "kcn_gat", "kcn_sage"]:
-    #    test_errors = random_runs(args)
-    #    model_error[args.model] = (np.mean(test_errors), np.std(test_errors))
-    #    print(model_error)
 
 
 # %%
@@ -55,8 +20,8 @@ print(args.dataset)
 print(args.n_neighbors)
 args.dataset = "n32_e035_1arc_v3_cropped"
 print(args.dataset)
-test_error, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_valid_mse, epoch_valid_map, epoch_train_loss, epoch_train_error, epoch_train_mse, epoch_train_map = experiment.run_kcn(args)
-
+#test_error, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_valid_mse, epoch_valid_mae, epoch_train_loss, epoch_train_error, epoch_train_mse, epoch_train_mae = run_kcn(args)
+test_error, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_valid_mse, epoch_valid_mae, epoch_train_loss, epoch_train_error, epoch_train_mse, epoch_train_mae, coverage_rate_tot, avg_interval_length_tot = run_kcn(args)
 epochs = list(range(len(epoch_valid_loss)))
 
 plt.figure(figsize=(10, 6))
@@ -93,8 +58,8 @@ plt.tight_layout()
 plt.show()
 
 plt.figure(figsize=(10, 6))
-plt.plot(epochs, epoch_train_map, label='Train Loss', marker='o')
-plt.plot(epochs, epoch_valid_map, label='Validation Loss', marker='x')
+plt.plot(epochs, epoch_train_mae, label='Train Loss', marker='o')
+plt.plot(epochs, epoch_valid_mae, label='Validation Loss', marker='x')
 plt.xlabel("Epoch")
 plt.ylabel("Self MAP Defnition")
 plt.title("Training and Validation Self MAP Defnition")
@@ -105,7 +70,7 @@ plt.show()
 
 # Plot
 plt.figure(figsize=(10, 8))
-sc = plt.scatter(testset.coords[:, 1].numpy(), testset.coords[:, 0].numpy(), c=test_error.detach().numpy(), cmap="coolwarm", s=5)
+sc = plt.scatter(testset.coords[:, 1].numpy(), testset.coords[:, 0].numpy(), c=test_error, cmap="coolwarm", s=5)
 plt.colorbar(sc, label="Prediction Error (m)")
 plt.xlabel("Longitude")
 plt.ylabel("Latitude")
@@ -114,7 +79,7 @@ plt.grid(True)
 plt.show()
 
 
-plt.hist(test_error.detach().numpy(), bins=100, color='gray')
+plt.hist(test_error, bins=100, color='gray')
 plt.title("Prediction Error Histogram")
 plt.xlabel("Error (Prediction - True)")
 plt.ylabel("Frequency")

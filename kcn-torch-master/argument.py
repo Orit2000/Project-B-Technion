@@ -15,6 +15,7 @@ def parse_opt():
     parser.add_argument('--random_seed', type=int, default="5", help="The random seed")
     parser.add_argument('--keep_n', type=float, default="0.005", help="The random seed")
     parser.add_argument('--normalize_elev', type=bool, default=True, help="The random seed")
+    parser.add_argument('--calib_percentage', type=float, default=0.5, help="The random seed")
     #parser.add_argument('--dataset', type=str, default="bird_count", help="The dataset name: currently can only be 'bird_count'")
     #Orit
     parser.add_argument('--form_input_graph', type=str, default="original", help="The dataset name (either 'bird_count' or DT2 file name)")
