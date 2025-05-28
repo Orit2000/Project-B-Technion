@@ -5,7 +5,7 @@ import data
 import dt2_data
 from tqdm import tqdm
 from geocp import GeoCPWrapper
-
+from data import SpatialDataset
 
 def run_kcn(args):
     """ Train and test a KCN model on a train-test split  
@@ -38,24 +38,35 @@ def run_kcn(args):
     
     if args.dataset == "bird_count":
         trainset, testset = data.load_bird_count_data(args)
-    elif args.dataset == "n32_e035_1arc_v3":
-        trainset, testset = dt2_data.load_dt2_data(args)
+    elif args.dataset == "n32_e035_1arc_v3_cropped":
+       trainset, validset, testset = dt2_data.load_dt2_data(args)
     else: 
         raise Exception(f"The repo does not support this dataset yet: args.dataset={args.dataset}")
 
     print(f"The {args.dataset} dataset has {len(trainset)} training instances and {len(testset)} test instances.")
 
-    #num_total_train = len(trainset)
-    #num_valid = args.validation_size
-    #num_train = num_total_train - args.validation_size
-    num_total_train = len(trainset)
-    num_calib = args.validation_size
+    num_total_train = len(trainset.y)
+    num_calib = int(args.calib_percentage*num_total_train)
     num_train = num_total_train - num_calib
     print(f"num_total_train: {num_total_train}, num_calib: {num_calib}, num_train:{num_train}")
 
     # Split trainset into train + calibration
     train_coords, train_features, train_y = trainset.coords[:num_train], trainset.features[:num_train], trainset.y[:num_train]
     calib_coords, calib_features, calib_y = trainset.coords[num_train:], trainset.features[num_train:], trainset.y[num_train:]
+
+    trainset =  SpatialDataset(
+            coords=train_coords.numpy(),
+            features=train_features.numpy(),
+            y=train_y.numpy()
+        )
+    
+    calibset =  SpatialDataset(
+        coords=calib_coords.numpy(),
+        features=train_fcalib_featureseatures.numpy(),
+        y=calib_y.numpy()
+    )
+
+
 
     print(f"train_coords: {train_coords.shape}, train_features: {train_features.shape}, train_y:{train_y.shape}")
     print(f"calib_coords: {calib_coords.shape}, calib_features: {calib_features.shape}, calib_y:{calib_y.shape}")
