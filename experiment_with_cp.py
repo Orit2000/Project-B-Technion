@@ -210,7 +210,8 @@ def run_kcn(args):
         n_total = testset.y.shape[0]
         n_covered = 0
         interval_lengths = []
-        CP_results = []
+        lower_tot = []
+        upper_tot = []
         for i in range(n_total):
             lower, upper = geocp.predict_interval(testset.coords[i], testset.y[i], testset.features[i], args)
             true_y = testset.y[i].item()
@@ -220,19 +221,21 @@ def run_kcn(args):
             interval_lengths.append(upper - lower)
             avg_interval_length = np.mean(interval_lengths)
             avg_interval_length_tot.append(avg_interval_length)
-
-            CP_results.append({
-                'lower': lower,
-                'upper': upper
-            })
-
+            lower_tot.append(lower)
+            upper_tot.append(upper)
+            
         coverage_rate = n_covered / n_total
 
     print(f"GeoCP Coverage Rate: {coverage_rate:.3f}")
     print(f" Interval Length: {interval_lengths}")
     print(f"Average Prediction Interval Length: {avg_interval_length_tot}")
     print(f"Mean Average Prediction Interval Length: {np.mean(avg_interval_length_tot)}")
-    
+
+    CP_results = {
+    'lower': lower_tot,
+    'upper': upper_tot
+    }
+
     #torch.save(CP_results, f"{args.save_path}/CP_results.pt")
     with open(f"{args.save_path}/CP_results.pkl", "wb") as f:
         pickle.dump(CP_results, f)

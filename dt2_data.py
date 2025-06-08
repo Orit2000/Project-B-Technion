@@ -5,7 +5,7 @@ from torch.utils.data import Dataset
 from data import SpatialDataset
 import os
 from matplotlib import pyplot as plt
-
+from scipy.stats import multivariate_normal
 class DT2Dataset(Dataset):
     """Dataset for DTED elevation maps in SpatialDataset format."""
     
@@ -94,7 +94,7 @@ def load_dt2_data(args):
     dt2_file = os.path.join(args.data_path, args.dataset + ".tiff")
     print(f"[DEBUG] Using dt2_file path: {dt2_file}")
     assert os.path.isfile(dt2_file), f"File does not exist: {dt2_file}"
-    if os.path.exists(cache_path):
+    if os.path.exists(cache_path) & args.new_spread==False:
         print("Loading cached sets...")
         trainset = torch.load(f"cache/trainset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt",weights_only=False)
         validset = torch.load(f"cache/validset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt",weights_only=False)
@@ -117,7 +117,40 @@ def load_dt2_data(args):
         #print(f"max of coord: ({max(dataset.coords[:,0])},{max(dataset.coords[:,1])})")
         keep_n = int(total * args.keep_n)
         #keep_n = int(total * 0.2)
-        selected_idx = np.random.RandomState(seed=args.random_seed).choice(total, size=keep_n, replace=False)
+        #Normal: 
+        if(args.datasampling == 'uniform'):
+            selected_idx = np.random.RandomState(seed=args.random_seed).choice(total, size=keep_n, replace=False)
+        elif(args.datasampling == 'normal'):
+            # Extract coordinate bounds
+            lat_min, lat_max = dataset.coords[:, 0].min().item(), dataset.coords[:, 0].max().item()
+            lon_min, lon_max = dataset.coords[:, 1].min().item(), dataset.coords[:, 1].max().item()
+
+            # Random center within map bounds
+            rng = np.random.RandomState(seed=args.random_seed)
+            random_center = np.array([
+                rng.uniform(lat_min, lat_max),
+                rng.uniform(lon_min, lon_max)
+            ])
+
+            random_center = np.array([
+                rng.uniform(lat_min, lat_max),
+                rng.uniform(lon_min, lon_max)
+            ])
+            cov = np.diag([0.01, 0.01])  # adjust spread of Gaussian as needed
+
+            # Convert coords to NumPy
+            coords_np = dataset.coords.numpy()
+            # Compute probability of each point under the Gaussian
+            prob_density = multivariate_normal(mean=random_center, cov=cov).pdf(coords_np)
+
+            # Normalize to sum to 1 for sampling
+            prob_density /= prob_density.sum()
+
+            # Sample based on these probabilities
+            selected_idx = rng.choice(len(coords_np), size=keep_n, replace=False, p=prob_density)
+            # Optional: print center
+            print(f"[Gaussian Sampling] Center = ({random_center[0]:.4f}, {random_center[1]:.4f})")
+
 
         dataset.coords = dataset.coords[selected_idx]
         dataset.features = dataset.features[selected_idx]
