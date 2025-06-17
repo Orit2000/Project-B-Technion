@@ -49,6 +49,7 @@ class DT2Dataset(Dataset):
                 features = coords
             '''
             features = coords
+            # Maybe features = []
             # Labels
             y = elevations  
                 
@@ -101,59 +102,120 @@ def load_dt2_data(args):
         calibset = torch.load(f"cache/calibset_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt",weights_only=False)
     else:
         print("Creating and caching sets...")
-
+        # FOR COLLAB:
+        #dt2_file= "/content/Project-B-Technion/kcn-torch-master/datasets/n32_e035_1arc_v3.dt2"
+        #print(f"dt2_file is: {dt2_file}")
+        # check if file exists
+        #if not os.path.isfile(dt2_file):
+        #raise Exception(f"DT2 file {dt2_file} not found. Please provide the correct file.")
+        #raise Exception(f"{dt2_file}")
+        # Create DT2Dataset object
         dataset = DT2Dataset(dt2_file=dt2_file, include_elevation_in_features=False, normalize=args.normalize_elev)
         print("dataset exists!")
         # Resample:
         total = dataset.coords.shape[0]
+        #print(f"min of coord: ({min(dataset.coords[:,0])},{min(dataset.coords[:,1])})")
+        #print(f"max of coord: ({max(dataset.coords[:,0])},{max(dataset.coords[:,1])})")
         keep_n = int(total * args.keep_n)
         num_total_dataset = keep_n 
         num_valid = int(args.validation_size * num_total_dataset)
         num_calib = int(args.calib_percentage*num_total_dataset)
         num_test = int(args.validation_size * num_total_dataset)
         num_train = num_total_dataset - num_valid -num_test - num_calib
-
+        #keep_n = int(total * 0.2)
+        #Normal: 
         if(args.datasampling == 'uniform' and args.setsdistribtuion=='equal'):
-
             selected_idx = np.random.RandomState(seed=args.random_seed).choice(total, size=num_total_dataset, replace=False)
+            dataset.coords = dataset.coords[selected_idx]
+            dataset.features = dataset.features[selected_idx]
+            dataset.y = dataset.y[selected_idx]
 
             # Split Indices
-            perm = np.random.RandomState(seed=args.random_seed).permutation(len(selected_idx))
-            selected_idx_train = selected_idx[perm[:num_train]]
-            selected_idx_val = selected_idx[perm[num_train:num_train + num_valid]]
-            selected_idx_test = selected_idx[perm[num_train + num_valid:num_train + num_valid + num_test]]
-            selected_idx_calib = selected_idx[perm[num_train + num_valid + num_test:]]
-
-            # Splits Sets
+            # Random shuffle and split
+            perm = np.random.RandomState(seed=args.random_seed).permutation(dataset.coords.shape[0])
+            selected_idx_train = perm[:num_train]
+            selected_idx_val = perm[num_train:num_train + num_valid]
+            selected_idx_test = perm[num_train + num_valid:num_train + num_valid + num_test]
+            selected_idx_calib = perm[num_train + num_valid + num_test:]
+            #trainset, validset, testset = sets_creation_func_equal(dataset, selected_idx, num_total_dataset,args)
             trainset, validset, testset, calibset = sets_creation_func(dataset, selected_idx_train, selected_idx_val, selected_idx_test, selected_idx_calib)
-
         elif(args.datasampling == 'normal' and args.setsdistribtuion=='equal'):
-            
-            selected_idx = selected_ind_normal(dataset,0,keep_n,args)
+            # # Extract coordinate bounds
+            # lat_min, lat_max = dataset.coords[:, 0].min().item(), dataset.coords[:, 0].max().item()
+            # lon_min, lon_max = dataset.coords[:, 1].min().item(), dataset.coords[:, 1].max().item()
 
-            # Split Indices
-            perm = np.random.RandomState(seed=args.random_seed).permutation(len(selected_idx))
-            selected_idx_train = selected_idx[perm[:num_train]]
-            selected_idx_val = selected_idx[perm[num_train:num_train + num_valid]]
-            selected_idx_test = selected_idx[perm[num_train + num_valid:num_train + num_valid + num_test]]
-            selected_idx_calib = selected_idx[perm[num_train + num_valid + num_test:]]
- 
-            trainset, validset, testset, calibset = sets_creation_func(dataset, selected_idx_train, selected_idx_val, selected_idx_test, selected_idx_calib)
+            # # Random center within map bounds
+            # rng = np.random.RandomState(seed=args.random_seed)
+            # random_center = np.array([
+            #     rng.uniform(lat_min, lat_max),
+            #     rng.uniform(lon_min, lon_max)
+            # ])
+            # cov = np.diag([0.01, 0.01])  # adjust spread of Gaussian as needed
+
+            # # Convert coords to NumPy
+            # coords_np = dataset.coords.numpy()
+            # # Compute probability of each point under the Gaussian
+            # prob_density = multivariate_normal(mean=random_center, cov=cov).pdf(coords_np)
+
+            # # Normalize to sum to 1 for sampling
+            # prob_density /= prob_density.sum()
+
+            # # Sample based on these probabilities
+            # selected_idx = rng.choice(len(coords_np), size=keep_n, replace=False, p=prob_density)
+            # # Optional: print center
+            # print(f"[Gaussian Sampling] Center = ({random_center[0]:.4f}, {random_center[1]:.4f})")
+            selected_idx = selected_ind_normal(dataset,0,keep_n)
+            dataset.coords = dataset.coords[selected_idx]
+            dataset.features = dataset.features[selected_idx]
+            dataset.y = dataset.y[selected_idx]
+            # Split into train and test sets
+            num_total_train = int(dataset.coords.shape[0] * 0.8)  # Use 80% for training
+            # Random shuffle and split
+            perm = np.random.RandomState(seed=args.random_seed).permutation(dataset.coords.shape[0])
+            trainset, validset, testset = sets_creation_func_equal(dataset, selected_idx,args)
 
 
         elif(args.datasampling == 'normal' and args.setsdistribtuion=='diff'):
-
-            # CASE 1: Val, Test, Calib are mu_train+mu
+            # CASE 1: Val, Test are mu_train+mu
+            num_valid = int(args.validation_size * num_total_dataset)
+            num_calib = int(args.calib_percentage*num_total_dataset)
+            num_test = int(args.validation_size * num_total_dataset)
+            num_train = num_total_dataset - num_valid -num_test - num_calib
             selected_idx_train = selected_ind_normal(dataset, mu=0, size=num_train, args=args)
             selected_idx_val = selected_ind_normal(dataset, mu=args.sampling_mu, size=num_valid, args=args, exclude_idx=selected_idx_train)
             selected_idx_test = selected_ind_normal(dataset, mu=args.sampling_mu, size=num_test, args=args, exclude_idx=np.concatenate([selected_idx_train, selected_idx_val]))
             selected_idx_calib = selected_ind_normal(dataset, mu=args.sampling_mu, size=num_calib, args=args, exclude_idx=np.concatenate([selected_idx_train, selected_idx_val,selected_idx_test]))
 
             trainset, validset, testset, calibset = sets_creation_func(dataset, selected_idx_train, selected_idx_val, selected_idx_test, selected_idx_calib)
+        # Calibration Set Creation
+        num_total_train = len(trainset.y)
+        num_calib = int(args.calib_percentage*num_total_train)
+        num_train = num_total_train - num_calib
+        print(f"num_total_train: {num_total_train}, num_calib: {num_calib}, num_train:{num_train}")
+        # Split trainset into train + calibration
+        train_coords, train_features, train_y = trainset.coords[:num_train], trainset.features[:num_train], trainset.y[:num_train]
+        calib_coords, calib_features, calib_y = trainset.coords[num_train:], trainset.features[num_train:], trainset.y[num_train:]
+
+        trainset =  SpatialDataset(
+                coords=train_coords.numpy(),
+                features=train_features.numpy(),
+                y=train_y.numpy()
+            )
         
-        print(f"num_total: {num_total_dataset}, num_calib: {num_calib}, num_train:{num_train}, num_val:{num_valid},  num_calib:{num_calib}")
+        calibset =  SpatialDataset(
+            coords=calib_coords.numpy(),
+            features=calib_features.numpy(),
+            y=calib_y.numpy()
+        )
+        # Log Range:
+        # min_y = torch.min(trainset.y)
+        # trainset.y= torch.log(trainset.y+min_y)
+        # testset.y = torch.log(testset.y+min_y)
+        # validset.y = torch.log(validset.y+min_y)
+
+        # print(f"NEW trainset range with log: [{torch.min(trainset.y), torch.max(trainset.y)}]")
+        # print(f"NEW valset range with log: [{torch.min(validset.y), torch.max(validset.y)}]")
         print("NEW NORM IS COMING!")
-        
         y_mean = trainset.y[:num_train].mean(dim=0, keepdim=True)
         y_std = trainset.y[:num_train].std(dim=0, keepdim=True) + 1e-6
         trainset.y = (trainset.y - y_mean) / y_std
@@ -230,13 +292,21 @@ def selected_ind_normal(dataset,mu,size,args,exclude_idx=None):
     #     rng.uniform(lon_min, lon_max)
     # ])
 
+
     center = np.array([(lat_max + lat_min) / 2, (lon_max + lon_min) / 2])
     mean = center + mu
     cov = np.diag([0.01, 0.01])
 
     # Convert coords to NumPy
     coords_np = dataset.coords.numpy()
+    # # Compute probability of each point under the Gaussian
+    # prob_density = multivariate_normal(mean=random_center+mu, cov=cov).pdf(coords_np)
 
+    # # Normalize to sum to 1 for sampling
+    # prob_density /= prob_density.sum()
+
+    # # Sample based on these probabilities
+    # selected_idx = rng.choice(len(coords_np), size=size, replace=False, p=prob_density)
      # Mask out already used indices
     all_indices = np.arange(len(coords_np))
     if exclude_idx is not None:
@@ -251,9 +321,42 @@ def selected_ind_normal(dataset,mu,size,args,exclude_idx=None):
 
     selected_local = rng.choice(len(coords_np), size=size, replace=False, p=prob_density)
     selected_idx = all_indices[selected_local]
-
     return selected_idx
 
+
+def sets_creation_func_equal(dataset, selected_idx, args):   
+
+    dataset.coords = dataset.coords[selected_idx]
+    dataset.features = dataset.features[selected_idx]
+    dataset.y = dataset.y[selected_idx]
+    # Split into train and test sets
+    num_total_train = int(dataset.coords.shape[0] * 0.8)  # Use 80% for training
+    # Random shuffle and split
+    perm = np.random.RandomState(seed=args.random_seed).permutation(dataset.coords.shape[0])
+
+    testset = SpatialDataset(
+        coords=dataset.coords[perm[num_total_train:]].numpy(),
+        features=dataset.features[perm[num_total_train:]].numpy(),
+        y=dataset.y[perm[num_total_train:]].numpy()
+    )
+
+    #if args.normalize_elev:
+    num_valid = args.validation_size * num_total_train
+    num_train = int(num_total_train - num_valid)
+
+    trainset = SpatialDataset(
+        coords=dataset.coords[:num_train].numpy(),
+        features=dataset.features[:num_train].numpy(),
+        y=dataset.y[:num_train].numpy()
+    )
+
+    validset = SpatialDataset(
+        coords=dataset.coords[num_train:].numpy(),
+        features=dataset.features[num_train:].numpy(),
+        y=dataset.y[num_train:].numpy()
+    )
+
+    return trainset, validset, testset
 
 
 def sets_creation_func(dataset, selected_idx_train, selected_idx_val, selected_idx_test, selected_idx_calib):   

@@ -12,6 +12,7 @@ def parse_opt():
     # Settings
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('--setsdistribtuion', type=str, default="equal", help="The random seed")
     parser.add_argument('--datasampling', type=str, default="uniform", help="The random seed")
     parser.add_argument('--new_spread', type=bool, default="False", help="The random seed")
     parser.add_argument('--random_seed', type=int, default="5", help="The random seed")

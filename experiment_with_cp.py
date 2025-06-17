@@ -46,7 +46,7 @@ def run_kcn(args):
     if args.dataset == "bird_count":
         trainset, testset = data.load_bird_count_data(args)
     elif args.dataset == "n32_e035_1arc_v3_cropped":
-       trainset, validset, testset = dt2_data.load_dt2_data(args)
+       trainset, validset, testset, calibset = dt2_data.load_dt2_data(args)
     else: 
         raise Exception(f"The repo does not support this dataset yet: args.dataset={args.dataset}")
     print(f"The {args.dataset} dataset has {len(trainset)} training instances and {len(testset)} test instances.")
@@ -55,27 +55,27 @@ def run_kcn(args):
     num_total_train = len(trainset.y)
     num_calib = int(args.calib_percentage*num_total_train)
     num_train = num_total_train - num_calib
-    print(f"num_total_train: {num_total_train}, num_calib: {num_calib}, num_train:{num_train}")
-    # Split trainset into train + calibration
-    train_coords, train_features, train_y = trainset.coords[:num_train], trainset.features[:num_train], trainset.y[:num_train]
-    calib_coords, calib_features, calib_y = trainset.coords[num_train:], trainset.features[num_train:], trainset.y[num_train:]
+    # print(f"num_total_train: {num_total_train}, num_calib: {num_calib}, num_train:{num_train}")
+    # # Split trainset into train + calibration
+    # train_coords, train_features, train_y = trainset.coords[:num_train], trainset.features[:num_train], trainset.y[:num_train]
+    # calib_coords, calib_features, calib_y = trainset.coords[num_train:], trainset.features[num_train:], trainset.y[num_train:]
 
-    trainset =  SpatialDataset(
-            coords=train_coords.numpy(),
-            features=train_features.numpy(),
-            y=train_y.numpy()
-        )
+    # trainset =  SpatialDataset(
+    #         coords=train_coords.numpy(),
+    #         features=train_features.numpy(),
+    #         y=train_y.numpy()
+    #     )
     
-    calibset =  SpatialDataset(
-        coords=calib_coords.numpy(),
-        features=calib_features.numpy(),
-        y=calib_y.numpy()
-    )
+    # calibset =  SpatialDataset(
+    #     coords=calib_coords.numpy(),
+    #     features=calib_features.numpy(),
+    #     y=calib_y.numpy()
+    # )
 
-    torch.save(trainset, f"cache/trainset_divided_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt")
-    torch.save(calibset, f"cache/calibset_divided_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt")
-    print(f"train_coords: {train_coords.shape}, train_features: {train_features.shape}, train_y:{train_y.shape}")
-    print(f"calib_coords: {calib_coords.shape}, calib_features: {calib_features.shape}, calib_y:{calib_y.shape}")
+    # torch.save(trainset, f"cache/trainset_divided_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt")
+    # torch.save(calibset, f"cache/calibset_divided_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt")
+    # print(f"train_coords: {train_coords.shape}, train_features: {train_features.shape}, train_y:{train_y.shape}")
+    # print(f"calib_coords: {calib_coords.shape}, calib_features: {calib_features.shape}, calib_y:{calib_y.shape}")
 
     # Model's Trainging
     model = kcn.KCN(trainset, args)
@@ -204,7 +204,9 @@ def run_kcn(args):
         print(f"Test MSE is {test_mse}")
         print(f"Test MAE is {test_mae}")
         print(f"Test Mean error is {np.mean(test_error)},",f"Test STD error is {np.std(test_error)}" )
-
+        calib_coords = calibset.coords
+        calib_y = calibset.y
+        calib_features = calibset.features
         geocp = GeoCPWrapper(model, calib_coords, calib_y, calib_features, args, eps=0.1, decay_beta=1.0, device=args.device)
 
         n_total = testset.y.shape[0]
@@ -223,7 +225,7 @@ def run_kcn(args):
             avg_interval_length_tot.append(avg_interval_length)
             lower_tot.append(lower)
             upper_tot.append(upper)
-            
+
         coverage_rate = n_covered / n_total
 
     print(f"GeoCP Coverage Rate: {coverage_rate:.3f}")
