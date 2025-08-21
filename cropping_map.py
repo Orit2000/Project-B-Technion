@@ -34,8 +34,8 @@ def cropped_to_tiff(dt2_file, output_path):
 
 # -------------------- Parameters --------------------
 dt2_file = "datasets/n32_e035_1arc_v3.dt2"
-min_lon, max_lon = 35.03, 35.2  # Avoid the sea!
-min_lat, max_lat = 32.8, 33.0
+min_lon, max_lon = 35.8, 36  # Avoid the sea!
+min_lat, max_lat = 32.4, 32.6
 
 # -------------------- Load Full Map --------------------
 with rasterio.open(dt2_file) as src:
@@ -79,24 +79,24 @@ with rasterio.open(dt2_file) as src:
     transform = src.window_transform(window)
 
 # ------------------- Saving cropped ---------------------
-# output_path = "datasets/n32_e035_1arc_v3_cropped_tiff.tiff"
-# with rasterio.open(dt2_file) as src:
-#     window = from_bounds(min_lon, min_lat, max_lon, max_lat, src.transform)
-#     cropped = src.read(1, window=window)
-#     transform = src.window_transform(window)
+output_path = "datasets/n32_e035_1arc_v3_cropped_tiff.tiff"
+with rasterio.open(dt2_file) as src:
+    window = from_bounds(min_lon, min_lat, max_lon, max_lat, src.transform)
+    cropped = src.read(1, window=window)
+    transform = src.window_transform(window)
 
-#     profile = src.profile.copy()
-#     profile.update({
-#         "height": cropped.shape[0],
-#         "width": cropped.shape[1],
-#         "transform": transform,
-#         "tiled": False,  # <--- Add this line to avoid block-size constraint
-#         "driver": "GTiff"
-#     })
+    profile = src.profile.copy()
+    profile.update({
+        "height": cropped.shape[0],
+        "width": cropped.shape[1],
+        "transform": transform,
+        "tiled": False,  # <--- Add this line to avoid block-size constraint
+        "driver": "GTiff"
+    })
 
-#     # Save as GeoTIFF
-#     with rasterio.open(output_path, "w", **profile) as dst:
-#         dst.write(cropped, 1)
+    # Save as GeoTIFF
+    with rasterio.open(output_path, "w", **profile) as dst:
+        dst.write(cropped, 1)
 
 # Calculate extent of cropped image
 top_left = transform * (0, 0)
