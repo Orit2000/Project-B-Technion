@@ -23,7 +23,7 @@ def parse_opt():
     #Orit
     parser.add_argument('--form_input_graph', type=str, default="original", help="The dataset name (either 'bird_count' or DT2 file name)")
     parser.add_argument('--dataset', type=str, default="n32_e035_1arc_v3", help="The dataset name (either 'bird_count' or DT2 file name)")
-    parser.add_argument('--data_path', type=str, default="./datasets", help="The folder containing the data file. The default file is './data/{dataset}.pkl'")
+    parser.add_argument('--data_path', type=str, default=".\datasets", help="The folder containing the data file. The default file is './data/{dataset}.pkl'")
     parser.add_argument('--use_default_test_set', type=bool, default=False, help='Use the default test set from the data')
     
     parser.add_argument('--model', type=str, default='kcn', help='One of three model types, kcn, kcn_gat, kcn_sage, which use GCN, GAT, and GraphSAGE respectively')
