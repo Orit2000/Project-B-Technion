@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-import kcn 
+import models.kcn as kcn 
 import data
 import dt2_data
 from tqdm import tqdm

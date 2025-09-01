@@ -1,0 +1,364 @@
+import numpy as np
+import torch
+import rasterio
+from torch.utils.data import Dataset
+from datasets.data import SpatialDataset
+import os
+from matplotlib import pyplot as plt
+from scipy.stats import multivariate_normal
+
+# =====================================
+# DT2Dataset: reads a single .tiff/.dt2 tile
+# =====================================
+class DT2Dataset(Dataset):
+    """Dataset for DTED elevation maps in SpatialDataset format."""
+    def __init__(self, dt2_file, include_elevation_in_features=False, normalize=True):
+        """
+        Args:
+            dt2_file: path to the .tiff/.dt2 file
+            include_elevation_in_features: if True, adds elevation as part of the feature vector
+            normalize: (currently reserved) if True, normalize features (coords normalization handled downstream)
+        Notes:
+            transform maps pixel (row,col) -> geographic (lon,lat):
+            (pixel_width, row_rot, x_min, col_rot, pixel_height, y_max)
+        """
+        with rasterio.open(dt2_file) as src:
+            print("I am reading!")
+            elevation = src.read(1)  # (H, W)
+            transform = src.transform
+            height, width = elevation.shape
+
+            # Coordinate grid (lon per column, lat per row)
+            lon_coords = np.array([transform[2] + i * transform[0] for i in range(width)])
+            lat_coords = np.array([transform[5] + j * transform[4] for j in range(height)])
+            lon_grid, lat_grid = np.meshgrid(lon_coords, lat_coords)
+
+            # Flatten
+            coords = np.stack([lat_grid.flatten(), lon_grid.flatten()], axis=1)  # [N,2] (lat,lon)
+            elevations = elevation.flatten().astype(np.float32).reshape(-1, 1)   # [N,1]
+
+            # Features: by default just coords; optionally concat elevation
+            if include_elevation_in_features:
+                features = np.concatenate([coords, elevations], axis=1)
+            else:
+                features = coords 
+
+            # Labels
+            y = elevations
+
+            # Tensors
+            self.coords = torch.from_numpy(coords).float()
+            self.features = torch.from_numpy(features).float()
+            self.y = torch.from_numpy(y).float()
+            
+    def __len__(self):
+        return self.coords.shape[0]
+
+    def __getitem__(self, idx):
+        return self.coords[idx], self.features[idx], self.y[idx]
+
+# =====================================
+# Helper plotting / inspection
+# =====================================
+
+def inspect_dataset(dataset, name="Train"):
+    print(f"\n {name} Dataset Summary")
+    print(f"➤ Number of points: {len(dataset)}")
+    print(f"➤ Coords shape: {dataset.coords.shape}")
+    print(f"➤ Feature shape: {dataset.features.shape}")
+    print(f"➤ Label shape: {dataset.y.shape}")
+    print(f"➤ Feature mean/std (first 5 dims):")
+    print(f"   mu = {dataset.features.mean(0)[:5].numpy()}")
+    print(f"  std = {dataset.features.std(0)[:5].numpy()}")
+    print(f"➤ Elevation min/max: {dataset.y.min().item():.2f} / {dataset.y.max().item():.2f}")
+
+    coords = dataset.coords.numpy()
+    print(f"➤ Lat range: {coords[:, 0].min():.4f} - {coords[:, 0].max():.4f}")
+    print(f"➤ Lon range: {coords[:, 1].min():.4f} - {coords[:, 1].max():.4f}")
+
+
+def set_plot(dataset):
+    extent = [dataset.coords[:, 1].min(), dataset.coords[:, 1].max(),
+              dataset.coords[:, 0].min(), dataset.coords[:, 0].max()]
+    plt.figure(figsize=(10, 8))
+    # dataset.y is 1D (N,1); imshow expects 2D grid — keep for quick-look only if you reshape externally
+    plt.scatter(dataset.coords[:, 1], dataset.coords[:, 0], c=dataset.y.squeeze(-1), s=2, cmap="terrain")
+    plt.colorbar(label="Elevation (m)")
+    plt.title("DTED Level 2 Elevation (scatter)")
+    plt.xlabel("Longitude"); plt.ylabel("Latitude")
+    plt.show()
+
+
+def set_plot_2(dataset):
+    plt.figure(figsize=(10, 8))
+    extent = [dataset.coords[:, 1].min(), dataset.coords[:, 1].max(),
+              dataset.coords[:, 0].min(), dataset.coords[:, 0].max()]
+    plt.scatter(dataset.coords[:, 1], dataset.coords[:, 0], c=dataset.y.squeeze(-1), s=2, cmap="terrain")
+    plt.colorbar(label="Elevation (m)")
+    lats = dataset.coords[:, 0]
+    lons = dataset.coords[:, 1]
+    plt.scatter(lons, lats, s=2, c='red', label='Points', alpha=0.6)
+    plt.title("DTED Level 2 with Sampled Points")
+    plt.xlabel("Longitude"); plt.ylabel("Latitude"); plt.legend(); plt.show()
+
+# =====================================
+# Sampling utils
+# =====================================
+
+def selected_ind_normal(dataset, mu, size, args, exclude_idx=None):
+    lat_min, lat_max = dataset.coords[:, 0].min().item(), dataset.coords[:, 0].max().item()
+    lon_min, lon_max = dataset.coords[:, 1].min().item(), dataset.coords[:, 1].max().item()
+
+    rng = np.random.RandomState(seed=args.random_seed)
+    center = np.array([(lat_max + lat_min) / 2, (lon_max + lon_min) / 2])
+    mean = center + mu
+    cov = np.diag([0.01, 0.01])
+
+    coords_np = dataset.coords.numpy()
+
+    # Exclude indices if provided
+    all_indices = np.arange(len(coords_np))
+    if exclude_idx is not None:
+        mask = np.ones(len(coords_np), dtype=bool)
+        mask[exclude_idx] = False
+        coords_np = coords_np[mask]
+        all_indices = all_indices[mask]
+
+    prob_density = multivariate_normal(mean=mean, cov=cov).pdf(coords_np)
+    prob_density /= prob_density.sum()
+
+    selected_local = rng.choice(len(coords_np), size=size, replace=False, p=prob_density)
+    selected_idx = all_indices[selected_local]
+    return selected_idx
+
+
+def sets_creation_func(dataset, selected_idx_train, selected_idx_val, selected_idx_test, selected_idx_calib, max_radius_km):
+    testset = SpatialDataset(
+        coords=dataset.coords[selected_idx_test].numpy(),
+        features=dataset.features[selected_idx_test].numpy(),
+        y=dataset.y[selected_idx_test].numpy()
+    )
+
+    trainset = SpatialDataset(
+        coords=dataset.coords[selected_idx_train].numpy(),
+        features=dataset.features[selected_idx_train].numpy(),
+        y=dataset.y[selected_idx_train].numpy()
+    )
+
+    validset = SpatialDataset(
+        coords=dataset.coords[selected_idx_val].numpy(),
+        features=dataset.features[selected_idx_val].numpy(),
+        y=dataset.y[selected_idx_val].numpy()
+    )
+
+    calibset = SpatialDataset(
+        coords=dataset.coords[selected_idx_calib].numpy(),
+        features=dataset.features[selected_idx_calib].numpy(),
+        y=dataset.y[selected_idx_calib].numpy()
+    )
+
+    add_transformer_masks(trainset, trainset.coords, trainset.y,
+                      max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
+    add_transformer_masks(validset, trainset.coords, trainset.y,
+                        max_radius_km=max_radius_km, self_exclude=False,max_obs=256, min_k=8)
+    add_transformer_masks(testset, trainset.coords, trainset.y,
+                        max_radius_km=max_radius_km, self_exclude=False,max_obs=256, min_k=8)
+    add_transformer_masks(calibset, trainset.coords, trainset.y,
+                        max_radius_km=max_radius_km, self_exclude=False,max_obs=256, min_k=8)
+
+    return trainset, validset, testset, calibset
+
+def add_transformer_masks(
+    dataset,
+    train_coords,
+    train_y,
+    max_radius_km=None,
+    self_exclude=False,
+    max_obs=None,         # cap number of observed tokens (optional)
+    min_k=8,              # fallback K if radius leaves too few neighbors
+    coord_atol=1e-9       # tolerance for coordinate equality
+):
+    # helpers
+    def haversine_dist(lat1, lon1, lat2, lon2):
+        R = 6371.0
+        dlat = torch.deg2rad(lat2 - lat1)
+        dlon = torch.deg2rad(lon2 - lon1)
+        a = torch.sin(dlat/2)**2 + torch.cos(torch.deg2rad(lat1)) * torch.cos(torch.deg2rad(lat2)) * torch.sin(dlon/2)**2
+        return R * (2 * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a)))
+
+    dataset.obs_coords = []
+    dataset.obs_y = []
+    dataset.query_coords = []
+    dataset.query_y = []
+    dataset.obs_mask = []
+    dataset.query_mask = []
+
+    # ensure tensors
+    train_coords = train_coords.clone()
+    train_y = train_y.clone()
+
+    for i in range(len(dataset)):
+        q_coord = dataset.coords[i]
+        q_y = dataset.y[i]
+
+        # start with all train points
+        if max_radius_km is not None:
+            dists = haversine_dist(q_coord[0], q_coord[1], train_coords[:, 0], train_coords[:, 1])
+            keep = dists <= max_radius_km
+        else:
+            keep = torch.ones(train_coords.shape[0], dtype=torch.bool)
+
+        # exclude the query point itself (only for train set)
+        if self_exclude:
+            same_lat = torch.isclose(train_coords[:, 0], q_coord[0], atol=coord_atol)
+            same_lon = torch.isclose(train_coords[:, 1], q_coord[1], atol=coord_atol)
+            keep = keep & ~(same_lat & same_lon)
+
+        # if nothing (or too few) remains, fall back to nearest min_k neighbors
+        if keep.sum().item() < min_k:
+            # compute distances once (if we didn't already)
+            if max_radius_km is None:
+                dists = haversine_dist(q_coord[0], q_coord[1], train_coords[:, 0], train_coords[:, 1])
+            # exclude self from fallback set as well
+            if self_exclude:
+                dists[same_lat & same_lon] = float('inf')
+            k = min(min_k, (train_coords.shape[0] - (1 if self_exclude else 0)))
+            topk = torch.topk(-dists, k).indices  # negative -> smallest distance
+            keep = torch.zeros_like(keep); keep[topk] = True
+
+        obs_coords = train_coords[keep]
+        obs_y = train_y[keep]
+
+        # optionally cap max observed tokens (helps memory)
+        if max_obs is not None and obs_coords.shape[0] > max_obs:
+            # choose closest max_obs
+            dists = haversine_dist(q_coord[0], q_coord[1], obs_coords[:, 0], obs_coords[:, 1])
+            sel = torch.topk(-dists, max_obs).indices
+            obs_coords = obs_coords[sel]
+            obs_y = obs_y[sel]
+
+        # build masks
+        L = obs_coords.shape[0] + 1  # +1 for query token
+        obs_mask = torch.zeros(L, dtype=torch.bool); obs_mask[:L-1] = True
+        query_mask = torch.zeros(L, dtype=torch.bool); query_mask[-1] = True
+
+        dataset.obs_coords.append(obs_coords)
+        dataset.obs_y.append(obs_y)
+        dataset.query_coords.append(q_coord)
+        dataset.query_y.append(q_y)
+        dataset.obs_mask.append(obs_mask[:L-1])  # keep mask per observed only if you prefer
+        dataset.query_mask.append(query_mask)
+
+'''def haversine_dist(lat1, lon1, lat2, lon2):
+    R = 6371  # Earth radius in kilometers
+    dlat = torch.radians(lat2 - lat1)
+    dlon = torch.radians(lon2 - lon1)
+    a = torch.sin(dlat/2)**2 + torch.cos(torch.radians(lat1)) * torch.cos(torch.radians(lat2)) * torch.sin(dlon/2)**2
+    c = 2 * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a))
+    return R * c
+'''
+# =====================================
+# Main loader with 4-way split (train/valid/test/calib)
+# =====================================
+
+def load_dt2_data(args):
+    """
+    Load data for training, validation, test, and calibration from a DTED file.
+
+    Returns
+    -------
+    trainset, validset, testset, calibset : SpatialDataset objects
+    """
+    # file path
+    os.makedirs("Transformer_Map_Interp/cache/", exist_ok=True)
+    cache_key = f"{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}"
+    dt2_file = os.path.join(args.data_path, args.dataset + ".tiff")
+    print(f"[DEBUG] Using dt2_file path: {dt2_file}")
+    assert os.path.isfile(dt2_file), f"File does not exist: {dt2_file}"
+
+    cache_exists = (
+        os.path.exists(f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt") and
+        os.path.exists(f"Transformer_Map_Interp/cache/validset_{cache_key}.pt") and
+        os.path.exists(f"Transformer_Map_Interp/cache/testset_{cache_key}.pt") and
+        os.path.exists(f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
+    )
+
+    if cache_exists and (args.new_spread == False):
+        print("Loading cached sets...")
+        trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt", weights_only=False)
+        validset = torch.load(f"Transformer_Map_Interp/cache/validset_{cache_key}.pt", weights_only=False)
+        testset  = torch.load(f"Transformer_Map_Interp/cache/testset_{cache_key}.pt",  weights_only=False)
+        calibset = torch.load(f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt", weights_only=False)
+        return trainset, validset, testset, calibset
+
+    print("Creating and caching sets...")
+    dataset = DT2Dataset(dt2_file=dt2_file, include_elevation_in_features=False, normalize=getattr(args, 'normalize_elev', False))
+    print("dataset exists!")
+
+    # ------- Resample point subset (deterministic) -------
+    total = dataset.coords.shape[0]
+    keep_n = int(total * args.keep_n)
+    rng = np.random.RandomState(seed=args.random_seed)
+    selected_idx = rng.choice(total, size=keep_n, replace=False) if args.datasampling == 'uniform' else None
+
+    num_total_dataset = keep_n
+    # use the SAME ratio for val/test/calib, as in your code
+    num_valid = int(args.validation_size * num_total_dataset)
+    num_calib = int(args.validation_size * num_total_dataset)
+    num_test  = int(args.validation_size * num_total_dataset)
+    num_train = num_total_dataset - num_valid - num_test - num_calib
+    assert num_train > 0, "Non-positive train size; reduce validation_size or keep_n."
+
+    if (args.datasampling == 'uniform' and args.setsdistribtuion == 'equal'):
+        perm = rng.permutation(len(selected_idx))
+        sel = selected_idx
+        idx_tr = sel[perm[:num_train]]
+        idx_va = sel[perm[num_train:num_train + num_valid]]
+        idx_te = sel[perm[num_train + num_valid:num_train + num_valid + num_test]]
+        idx_ca = sel[perm[num_train + num_valid + num_test:]]
+        trainset, validset, testset, calibset = sets_creation_func(dataset, idx_tr, idx_va, idx_te, idx_ca, args.max_km)
+
+    elif (args.datasampling == 'normal' and args.setsdistribtuion == 'equal'):
+        sel = selected_ind_normal(dataset, 0, keep_n, args)
+        perm = rng.permutation(len(sel))
+        idx_tr = sel[perm[:num_train]]
+        idx_va = sel[perm[num_train:num_train + num_valid]]
+        idx_te = sel[perm[num_train + num_valid:num_train + num_valid + num_test]]
+        idx_ca = sel[perm[num_train + num_valid + num_test:]]
+        trainset, validset, testset, calibset = sets_creation_func(dataset, idx_tr, idx_va, idx_te, idx_ca, args.max_km)
+
+    elif (args.datasampling == 'normal' and args.setsdistribtuion == 'diff'):
+        idx_tr = selected_ind_normal(dataset, mu=0, size=num_train, args=args)
+        idx_va = selected_ind_normal(dataset, mu=args.sampling_mu, size=num_valid, args=args, exclude_idx=idx_tr)
+        idx_te = selected_ind_normal(dataset, mu=args.sampling_mu, size=num_test, args=args, exclude_idx=np.concatenate([idx_tr, idx_va]))
+        idx_ca = selected_ind_normal(dataset, mu=args.sampling_mu, size=num_calib, args=args, exclude_idx=np.concatenate([idx_tr, idx_va, idx_te]))
+        trainset, validset, testset, calibset = sets_creation_func(dataset, idx_tr, idx_va, idx_te, idx_ca, args.max_km)
+
+    else:
+        raise ValueError("Unsupported combination for datasampling/setsdistribtuion")
+
+    print(f"num_total: {num_total_dataset}, num_train: {num_train}, num_val: {num_valid}, num_test: {num_test}, num_calib: {num_calib}")
+
+    # ------- Normalize targets by train statistics -------
+    y_mean = trainset.y.mean(dim=0, keepdim=True)
+    y_std  = trainset.y.std(dim=0, keepdim=True) + 1e-6
+
+    trainset.y = (trainset.y - y_mean) / y_std
+    validset.y = (validset.y - y_mean) / y_std
+    testset.y  = (testset.y  - y_mean) / y_std
+    calibset.y = (calibset.y - y_mean) / y_std
+
+    # Keep for inverse-transform if needed
+    trainset.y_mean = y_mean
+    trainset.y_std  = y_std
+
+    # ------- Inspect & Cache -------
+    inspect_dataset(trainset, name="Train")
+    inspect_dataset(testset, name="Test")
+
+    torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt")
+    torch.save(validset, f"Transformer_Map_Interp/cache/validset_{cache_key}.pt")  # (fix) save validset correctly
+    torch.save(testset,  f"Transformer_Map_Interp/cache/testset_{cache_key}.pt")
+    torch.save(calibset, f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
+
+    return trainset, validset, testset, calibset

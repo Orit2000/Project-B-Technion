@@ -6,7 +6,7 @@ import dt2_data
 import argument
 import experiment
 import torch
-import kcn 
+import models.kcn as kcn 
 # Model Results Evaluations
 from types import SimpleNamespace
 

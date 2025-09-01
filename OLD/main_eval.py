@@ -9,7 +9,7 @@ from data import SpatialDataset
 from matplotlib import pyplot as plt
 import dt2_data
 import argument
-import kcn
+import models.kcn as kcn
 args = argument.parse_opt()
 args.keep_n = 0.005*10/10
 print(args.dataset)

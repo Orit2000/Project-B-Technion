@@ -1,11 +1,8 @@
 import torch
 import numpy as np
-import kcn 
-import data
-import dt2_data
-from tqdm import tqdm
-from geocp import GeoCPWrapper
-from data import SpatialDataset
+from conformalPrediction.geocp import GeoCPWrapper
+from datasets.data import SpatialDataset
+from datasets.dt2_data import load_dt2_data
 import pickle
 
 def MSE(y_true, y_pred):
@@ -14,7 +11,7 @@ def MSE(y_true, y_pred):
 def MAE(y_true, y_pred):
     return np.sum(np.abs(y_true - y_pred))/len(y_true)
 
-def run_kcn(args):
+def run_transformer(args):
     """ Train and test a KCN model on a train-test split  
 
     Args
@@ -42,11 +39,10 @@ def run_kcn(args):
     # This function has the following three steps:
     # 1) loading data; 2) spliting the data into training and test subsets; 3) normalizing data 
     print(f"from run_kcn: {args.dataset}")
-    
-    if args.dataset == "bird_count":
-        trainset, testset = data.load_bird_count_data(args)
-    elif args.dataset == "n32_e035_1arc_v3_cropped":
-       trainset, validset, testset, calibset = dt2_data.load_dt2_data(args)
+    #args.dataset = "n32_e035_1arc_v3_cropped"
+
+    if args.dataset == "n32_e035_1arc_v3_cropped":
+       trainset, validset, testset, calibset = load_dt2_data(args)
     else: 
         raise Exception(f"The repo does not support this dataset yet: args.dataset={args.dataset}")
     print(f"The {args.dataset} dataset has {len(trainset)} training instances and {len(testset)} test instances.")
@@ -55,27 +51,6 @@ def run_kcn(args):
     num_total_train = len(trainset.y)
     num_calib = int(args.calib_percentage*num_total_train)
     num_train = num_total_train - num_calib
-    # print(f"num_total_train: {num_total_train}, num_calib: {num_calib}, num_train:{num_train}")
-    # # Split trainset into train + calibration
-    # train_coords, train_features, train_y = trainset.coords[:num_train], trainset.features[:num_train], trainset.y[:num_train]
-    # calib_coords, calib_features, calib_y = trainset.coords[num_train:], trainset.features[num_train:], trainset.y[num_train:]
-
-    # trainset =  SpatialDataset(
-    #         coords=train_coords.numpy(),
-    #         features=train_features.numpy(),
-    #         y=train_y.numpy()
-    #     )
-    
-    # calibset =  SpatialDataset(
-    #     coords=calib_coords.numpy(),
-    #     features=calib_features.numpy(),
-    #     y=calib_y.numpy()
-    # )
-
-    # torch.save(trainset, f"cache/trainset_divided_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt")
-    # torch.save(calibset, f"cache/calibset_divided_{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}.pt")
-    # print(f"train_coords: {train_coords.shape}, train_features: {train_features.shape}, train_y:{train_y.shape}")
-    # print(f"calib_coords: {calib_coords.shape}, calib_features: {calib_features.shape}, calib_y:{calib_y.shape}")
 
     # Model's Trainging
     model = kcn.KCN(trainset, args)
@@ -244,3 +219,62 @@ def run_kcn(args):
 
     return test_error, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_valid_mse, epoch_valid_mae, epoch_train_loss, epoch_train_error, epoch_train_mse, epoch_train_mae, coverage_rate_tot, avg_interval_length_tot, test_preds_norm
     #return test_error, test_preds, testset, epoch_valid_loss, epoch_valid_error, epoch_valid_mse, epoch_valid_mae, epoch_train_loss, epoch_train_error, epoch_train_mse, epoch_train_mae, coverage_rate_tot, avg_interval_length_tot
+
+from models.setformer import SetFormer
+
+def run_setformer(args, train_loader, valid_loader, in_feat_dim):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = SetFormer(
+    in_feat_dim=in_feat_dim,
+    d_model=args.sf_d_model,
+    depth=args.sf_depth,
+    n_heads=args.sf_heads,
+    p_drop=args.sf_drop,
+    use_distance_bias=args.sf_use_distance_bias,
+    rbf_centers=args.sf_rbf_centers,
+    rbf_gamma=args.sf_rbf_gamma,
+    use_fourier_feats=args.sf_use_fourier_feats,
+    fourier_num_freqs=args.sf_fourier_num_freqs,
+    use_obs_y_as_feature=args.sf_use_obs_y_as_feature,
+    ).to(device)
+
+    opt = torch.optim.AdamW(model.parameters(), lr=args.lr,
+    weight_decay=args.weight_decay)
+    mse = nn.MSELoss(reduction='mean')
+
+    def evaluate(loader):
+        model.eval()
+        se_sum, ae_sum, n_points = 0.0, 0.0, 0
+        with torch.no_grad():
+            for coords, feats, y, obs, qry, pad in loader:
+                coords = coords.to(device)
+                y = y.to(device)
+                obs = obs.to(device)
+                qry = qry.to(device)
+                pad = pad.to(device)
+                key_pad = pad # True at padded
+                feats_d = feats.to(device) if feats is not None else None
+                pred = model(coords, feats_d, y=y, obs_mask=obs, query_mask=qry, key_padding_mask=key_pad)
+                q = qry & (~pad)
+                se_sum += ((pred[q] - y[q]) ** 2).sum().item()
+                ae_sum += (pred[q] - y[q]).abs().sum().item()
+                n_points += q.sum().item()
+                return (se_sum / max(1, n_points)) ** 0.5, ae_sum / max(1, n_points)
+            for epoch in range(args.epochs): 
+                model.train()
+                for coords, feats, y, obs, qry, pad in train_loader:
+                    coords = coords.to(device)
+                    y = y.to(device)
+                    obs = obs.to(device)
+                    qry = qry.to(device)
+                    pad = pad.to(device)
+                    key_pad = pad
+                    feats_d = feats.to(device) if feats is not None else None
+                    pred = model(coords, feats_d, y=y, obs_mask=obs, query_mask=qry,
+                                 key_padding_mask=key_pad)
+                    q = qry & (~pad)
+                    loss = mse(pred[q], y[q])
+                    opt.zero_grad(); loss.backward(); opt.step()
+                    rmse, mae = evaluate(valid_loader)
+                    print(f"Epoch {epoch}: valid RMSE={rmse:.4f} MAE={mae:.4f}")
+                    return model

@@ -26,7 +26,7 @@ def parse_opt():
     parser.add_argument('--data_path', type=str, default=".\datasets", help="The folder containing the data file. The default file is './data/{dataset}.pkl'")
     parser.add_argument('--use_default_test_set', type=bool, default=False, help='Use the default test set from the data')
     
-    parser.add_argument('--model', type=str, default='kcn', help='One of three model types, kcn, kcn_gat, kcn_sage, which use GCN, GAT, and GraphSAGE respectively')
+    #parser.add_argument('--model', type=str, default='kcn', help='One of three model types, kcn, kcn_gat, kcn_sage, which use GCN, GAT, and GraphSAGE respectively')
     parser.add_argument('--n_neighbors', type=int, default=50, help='Number of neighbors')
     parser.add_argument('--top_k', type=int, default=5, help='Number of neighbors')
     parser.add_argument('--length_scale', default="auto", help='Length scale for RBF kernel. If set to "auto", then it will be set to the median of neighbor distances')
@@ -35,7 +35,7 @@ def parse_opt():
     parser.add_argument('--last_activation', type=str, default='none', help='Activation for the last layer')
     
     parser.add_argument('--loss_type', type=str, default='squared_error', help='Loss type') 
-    parser.add_argument('--validation_size', type=float, default=0.2, help='Validation size') 
+    parser.add_argument('--validation_size', type=float, default=0.1, help='Validation size') 
     
     parser.add_argument('--lr', type=float, default=5e-3, help='Learning rate.')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay for the optimizer.')
@@ -45,6 +45,23 @@ def parse_opt():
     
     parser.add_argument('--device', type=str, default="auto", help='Computation device.')
     parser.add_argument('--num_hops', type=int, default=3, help='Number of hops to include in the graph.')
+
+    parser.add_argument('--model', type=str, default='kcn',
+     choices=['kcn', 'gcn', 'gcn_gat', 'gcn_sage', 'setformer'],
+     help='Model architecture')
+
+    # SetFormer options
+    parser.add_argument('--sf_d_model', type=int, default=256)
+    parser.add_argument('--sf_depth', type=int, default=4)
+    parser.add_argument('--sf_heads', type=int, default=4)
+    parser.add_argument('--sf_drop', type=float, default=0.1)
+    parser.add_argument('--sf_use_distance_bias', action='store_true')
+    parser.add_argument('--sf_rbf_centers', type=int, default=16)
+    parser.add_argument('--sf_rbf_gamma', type=float, default=10.0)
+    parser.add_argument('--sf_use_fourier_feats', action='store_true')
+    parser.add_argument('--sf_fourier_num_freqs', type=int, default=8)
+    parser.add_argument('--sf_use_obs_y_as_feature', action='store_true')
+
     #args, unknowns = parser.parse_known_args()
     #args = parser.parse_args(custom_args)  # ← don't use sys.argv at all
     args, unknowns = parser.parse_known_args()

@@ -32,7 +32,7 @@ test_coords = testset.coords.detach().cpu().numpy()
 test_y_true = (testset.y * trainset.y_std + trainset.y_mean).detach().cpu().numpy().flatten()
 
 # Perform interpolation: options = 'nearest', 'linear', 'cubic'
-interp_method = 'nearest'
+interp_method = 'lineaer'
 valid_y_interp = griddata(train_coords, train_y, valid_coords,method=interp_method)
 test_y_interp = griddata(train_coords, train_y, test_coords,method=interp_method)
 
