@@ -15,13 +15,13 @@ class TransformerDataset(Dataset):
     def __getitem__(self, idx):
         # === Extract sample ===
         query_coord = self.dataset.query_coords[idx]        # (2,)
-        print(f"query_coord shape: {query_coord.shape}\n")
+        #print(f"query_coord shape: {query_coord.shape}\n")
         query_y     = self.dataset.query_y[idx]             # (1,)
-        print(f"query_y shape: {query_y.shape}\n")
+        #print(f"query_y shape: {query_y.shape}\n")
         obs_coords  = self.dataset.obs_coords[idx]          # (N_o, 2)
-        print(f"obs_coords shape: {obs_coords.shape}\n")
+        #print(f"obs_coords shape: {obs_coords.shape}\n")
         obs_y       = self.dataset.obs_y[idx]               # (N_o, 1)
-        print(f"obs_y shape: {obs_y.shape}\n")
+        #print(f"obs_y shape: {obs_y.shape}\n")
 
         # === Optional truncation ===
         if self.max_obs is not None and obs_coords.shape[0] > self.max_obs:
@@ -31,9 +31,9 @@ class TransformerDataset(Dataset):
 
         # === Combine tokens ===
         all_coords = torch.cat([obs_coords, query_coord.unsqueeze(0)], dim=0)  # (N+1, 2)
-        print(f"all_coords shape: {all_coords.shape}\n")
+        #print(f"all_coords shape: {all_coords.shape}\n")
         all_y = torch.cat([obs_y, query_y.unsqueeze(0)], dim=0)                # (N+1, 1)
-        print(f"all_y shape: {all_y.shape}\n")
+        #print(f"all_y shape: {all_y.shape}\n")
 
         # === Features ===
         if self.use_features:
@@ -47,11 +47,11 @@ class TransformerDataset(Dataset):
         N = all_coords.shape[0]
         obs_mask = torch.zeros(N, dtype=torch.bool)
         obs_mask[:-1] = True
-        print(f"obs_mask shape: {obs_mask.shape}\n")
+        #print(f"obs_mask shape: {obs_mask.shape}\n")
 
         query_mask = torch.zeros(N, dtype=torch.bool)
         query_mask[-1] = True
-        print(f"query_mask shape: {query_mask.shape}\n")
+        #print(f"query_mask shape: {query_mask.shape}\n")
 
         pad_mask = torch.zeros(N, dtype=torch.bool)  # no padding yet
 

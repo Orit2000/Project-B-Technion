@@ -32,6 +32,12 @@ def run_transformer(args):
         shuffle=False
     )
 
+    test_loader = DataLoader(
+        TransformerDataset(testset, args, max_obs_per_sample=args.max_obs),
+        batch_size=args.batch_size,
+        shuffle=False
+    )
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     in_feat_dim = trainset.features.shape[1]
 
@@ -55,27 +61,53 @@ def run_transformer(args):
     def evaluate(loader):
         model.eval()
         se_sum, ae_sum, n_points = 0.0, 0.0, 0
+        loss_sum = 0.0
+        n_batches = 0
+
         with torch.no_grad():
             for coords, feats, y, obs, qry, pad in loader:
                 coords, y, obs, qry, pad = coords.to(device), y.to(device), obs.to(device), qry.to(device), pad.to(device)
                 feats = feats.to(device) if feats is not None else None
+
                 pred = model(coords, feats, y=y, obs_mask=obs, query_mask=qry, key_padding_mask=pad)
                 q_mask = qry & (~pad)
+
                 se_sum += ((pred[q_mask] - y[q_mask]) ** 2).sum().item()
                 ae_sum += (pred[q_mask] - y[q_mask]).abs().sum().item()
+                loss_sum += mse_loss(pred[q_mask], y[q_mask].squeeze(-1)).item()
                 n_points += q_mask.sum().item()
-        return (se_sum / max(1, n_points)) ** 0.5, ae_sum / max(1, n_points)
+                n_batches += 1
+
+        rmse = (se_sum / max(1, n_points)) ** 0.5
+        mae = ae_sum / max(1, n_points)
+        avg_loss = loss_sum / n_batches
+        return avg_loss, rmse, mae
 
     for epoch in range(args.epochs):
+        epoch_train_losses = []
         model.train()
         for coords, feats, y, obs, qry, pad in train_loader:
             coords, y, obs, qry, pad = coords.to(device), y.to(device), obs.to(device), qry.to(device), pad.to(device)
             feats = feats.to(device) if feats is not None else None
             pred = model(coords, None, y=y, obs_mask=obs, query_mask=qry, key_padding_mask=pad)
             q_mask = qry & (~pad)
-            loss = mse_loss(pred[q_mask], y[q_mask])
-            opt.zero_grad(); loss.backward(); opt.step()
+            loss = mse_loss(pred[q_mask], y[q_mask].squeeze(-1))
+            opt.zero_grad()
+            loss.backward()
+            opt.step()
 
-        rmse, mae = evaluate(valid_loader)
-        print(f"Epoch {epoch:02d}: Valid RMSE={rmse:.4f} | MAE={mae:.4f}")
+            epoch_train_losses.append(loss.item())
+
+
+        # --- Evaluation after epoch ---
+        _ , train_rmse, train_mae = evaluate(train_loader)
+        valid_loss, valid_rmse, valid_mae = evaluate(valid_loader)
+
+        print(f"[Epoch {epoch}]: "f"Train Loss: {np.mean(epoch_train_losses):.4f} | " f"Train RMSE: {train_rmse:.4f} | Train MAE: {train_mae:.4f} | "f"Val Loss: {valid_loss:.4f} | "f"Val RMSE: {valid_rmse:.4f} | Val MAE: {valid_mae:.4f}")
+
+
+    # --- Final Test Evaluation ---
+    test_loss, test_rmse, test_mae = evaluate(test_loader)
+    print(f"[Test] "f"Test Loss: {test_loss:.4f} | RMSE: {test_rmse:.4f} | MAE: {test_mae:.4f}")
+
 
