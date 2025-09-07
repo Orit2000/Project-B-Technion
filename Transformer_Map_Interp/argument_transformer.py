@@ -26,7 +26,8 @@ def parse_opt():
     #Orit
     parser.add_argument('--form_input_graph', type=str, default="original", help="The dataset name (either 'bird_count' or DT2 file name)")
     parser.add_argument('--dataset', type=str, default="n32_e035_1arc_v3", help="The dataset name (either 'bird_count' or DT2 file name)")
-    parser.add_argument('--data_path', type=str, default=".\Transformer_Map_Interp\datasets", help="The folder containing the data file. The default file is './data/{dataset}.pkl'")
+    #parser.add_argument('--data_path', type=str, default=".\Transformer_Map_Interp\datasets", help="The folder containing the data file. The default file is './data/{dataset}.pkl'")
+    parser.add_argument('--data_path', type=str, default="./Transformer_Map_Interp/datasets", help="The folder containing the data file. The default file is './data/{dataset}.pkl'")
     parser.add_argument('--use_default_test_set', type=bool, default=False, help='Use the default test set from the data')
     
     parser.add_argument('--model', type=str, default='kcn', help='One of three model types, kcn, kcn_gat, kcn_sage, which use GCN, GAT, and GraphSAGE respectively')
@@ -42,7 +43,7 @@ def parse_opt():
     
     parser.add_argument('--lr', type=float, default=5e-3, help='Learning rate.')
     parser.add_argument('--weight_decay', type=float, default=5e-4, help='Weight decay for the optimizer.')
-    parser.add_argument('--epochs', type=int, default=10, help='Number of training epochs.')
+    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs.')
     parser.add_argument('--es_patience', type=int, default=20, help='Patience for early stopping.')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
     

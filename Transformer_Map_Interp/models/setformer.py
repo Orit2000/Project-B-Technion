@@ -63,7 +63,7 @@ class NonCausalDecoderBlock(nn.Module):
         y = self.attn(
             query=self.ln1(x), key=self.ln1(x), value=self.ln1(x),
             attn_mask=attn_bias, key_padding_mask=key_padding_mask
-        )[0]
+        )[0] # For attn_bias = None we will get a non casual decoder
         x = x + y
         x = x + self.mlp(self.ln2(x))
         return x

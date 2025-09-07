@@ -3,7 +3,7 @@ import numpy as np
 import torch
 from argument_transformer import parse_opt 
 #from run_transformer import run_transformer
-from new_run_trandformer import run_transformer
+from new_run_transformer import run_transformer
 
 if __name__ == "__main__":
 
