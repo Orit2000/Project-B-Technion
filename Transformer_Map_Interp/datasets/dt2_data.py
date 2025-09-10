@@ -2,7 +2,7 @@ import numpy as np
 import torch
 import rasterio
 from torch.utils.data import Dataset
-from datasets.data import SpatialDataset
+from Transformer_Map_Interp.datasets.data import SpatialDataset
 import os
 from matplotlib import pyplot as plt
 from scipy.stats import multivariate_normal
