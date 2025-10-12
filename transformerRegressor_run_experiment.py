@@ -131,11 +131,14 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from Transformer_Map_Interp.datasets.transformerRegressorDataClass import (
-    NeighborIndex, TransformerPointDataset, collate_point_batches
+    TransformerPointDataset, collate_point_batches
 )
 from Transformer_Map_Interp.datasets.dt2_data import load_dt2_data
 from Transformer_Map_Interp.models.transformerRegressor import TransformerCLSRegressor
 
+def debug_shape(phase, mem):
+        B, S, F = mem.shape
+        print(f"[{phase}] mem_tokens shape = (B={B}, S={S}, F={F})")
 
 def run_transformer(args) -> Tuple[float, float]:
     """
@@ -166,7 +169,7 @@ def run_transformer(args) -> Tuple[float, float]:
         torch.save(rows, pt_path)
 
     @torch.no_grad()
-    def _eval_epoch(model, loader, y_mean: torch.Tensor, y_std: torch.Tensor, device: torch.device) -> Dict[str, float]:
+    def _eval_epoch(model, loader, y_mean: torch.Tensor, y_std: torch.Tensor, device: torch.device, phase) -> Dict[str, float]:
         """Returns dict with normalized loss, plus real-units MSE/MAE."""
         loss_fn = torch.nn.MSELoss(reduction="mean")
         model.eval()
@@ -177,6 +180,7 @@ def run_transformer(args) -> Tuple[float, float]:
         for mem, mask, y, _ in loader:
             # (your dataset typically already yields tensors on device; .to is a no-op if so)
             mem, mask, y = mem.to(device), mask.to(device), y.to(device)
+            debug_shape(phase, mem)
             y_hat = model(mem, mask)
             loss = loss_fn(y_hat, y)
             tot_loss += loss.item() * y.size(0)
@@ -202,15 +206,15 @@ def run_transformer(args) -> Tuple[float, float]:
     # ---------------------------
     # 2) Neighbor index over TRAIN only
     # ---------------------------
-    nei = NeighborIndex(train_coords=trainset.coords.cpu(), k=args.n_neighbors)
+    # nei = NeighborIndex(train_coords=trainset.coords.cpu(), k=args.n_neighbors)
 
     # ---------------------------
     # 3) Point datasets (CLS-centered)
     # ---------------------------
     dev = args.device
-    ds_train = TransformerPointDataset(trainset, trainset, nei, k=args.n_neighbors, device=dev)
-    ds_valid = TransformerPointDataset(validset, trainset, nei, k=args.n_neighbors, device=dev)
-    ds_test  = TransformerPointDataset(testset,  trainset, nei, k=args.n_neighbors, device=dev)
+    ds_train = TransformerPointDataset(trainset, trainset, device=dev)
+    ds_valid = TransformerPointDataset(validset, trainset, device=dev)
+    ds_test  = TransformerPointDataset(testset,  trainset, device=dev)
 
     # ---------------------------
     # 4) Dataloaders
@@ -222,7 +226,7 @@ def run_transformer(args) -> Tuple[float, float]:
     # ---------------------------
     # 5) Model
     # ---------------------------
-    in_dim = 4  # [Δlat, Δlon, y_known_norm, is_observed]
+    in_dim = 3  # [Δlat, Δlon, y_known_norm, is_observed] # Orit 12.10 from 4 --> 3
     model = TransformerCLSRegressor(
         in_dim=in_dim,
         d_model=args.d_model,
@@ -262,8 +266,9 @@ def run_transformer(args) -> Tuple[float, float]:
         model.train()
         train_loss_acc = 0.0
         n_train = 0
-        for mem, mask, y, _ in tqdm(train_loader, desc=f"[Epoch {epoch}] train"):
+        for mem, mask, y, _ in tqdm(train_loader, desc=f"[Epoch {epoch}] train"): #mem_tokens, pad_mask, y, cls_coords
             mem, mask, y = mem.to(dev), mask.to(dev), y.to(dev)
+            debug_shape("train", mem)
             y_hat = model(mem, mask)
             loss = loss_fn(y_hat, y)
             optim.zero_grad()
@@ -276,10 +281,10 @@ def run_transformer(args) -> Tuple[float, float]:
         # ---- Eval: train metrics (real units) ----
         train_eval = _eval_epoch(model, DataLoader(ds_train, batch_size=args.batch_size, shuffle=False,
                                                    collate_fn=collate_point_batches),
-                                 y_mean, y_std, dev)
+                                 y_mean, y_std, dev,"eval - train")
 
         # ---- Eval: val metrics ----
-        val_eval = _eval_epoch(model, valid_loader, y_mean, y_std, dev)
+        val_eval = _eval_epoch(model, valid_loader, y_mean, y_std, dev, "eval - val")
 
         # ---- Log & keep best (by val normalized loss, same as your original logic) ----
         row = {
@@ -324,7 +329,7 @@ def run_transformer(args) -> Tuple[float, float]:
     # ---------------------------
     @torch.no_grad()
     def _eval_loader(loader):
-        r = _eval_epoch(model, loader, y_mean, y_std, dev)
+        r = _eval_epoch(model, loader, y_mean, y_std, dev, "eval - test")
         return r["mse"], r["mae"]
 
     test_mse, test_mae = _eval_loader(test_loader)

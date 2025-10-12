@@ -94,3 +94,4 @@ class TransformerCLSRegressor(nn.Module):
 
         y_hat = self.out(dec[:, 0, :]).squeeze(-1)  # (B,)
         return y_hat
+    

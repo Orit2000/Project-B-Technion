@@ -157,13 +157,20 @@ def sets_creation_func(dataset, selected_idx_train, selected_idx_val, selected_i
         y=dataset.y[selected_idx_calib].numpy()
     )
 
-    add_transformer_masks(trainset, trainset.coords, trainset.y,
+    # labels stats (scalars)
+    train_y_mean = torch.as_tensor(trainset.y.mean(), dtype=torch.float32)
+    train_y_std  = torch.as_tensor(trainset.y.std(),  dtype=torch.float32).clamp_min(1e-6)
+
+    trainset.y_mean = train_y_mean
+    trainset.y_std  = train_y_std
+
+    add_transformer_masks(trainset, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
                       max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
-    add_transformer_masks(validset, trainset.coords, trainset.y,
+    add_transformer_masks(validset, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
                         max_radius_km=max_radius_km, self_exclude=False,max_obs=256, min_k=8)
-    add_transformer_masks(testset, trainset.coords, trainset.y,
+    add_transformer_masks(testset, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
                         max_radius_km=max_radius_km, self_exclude=False,max_obs=256, min_k=8)
-    add_transformer_masks(calibset, trainset.coords, trainset.y,
+    add_transformer_masks(calibset, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
                         max_radius_km=max_radius_km, self_exclude=False,max_obs=256, min_k=8)
 
     return trainset, validset, testset, calibset
@@ -172,6 +179,8 @@ def add_transformer_masks(
     dataset,
     train_coords,
     train_y,
+    train_y_mean, 
+    train_y_std,
     max_radius_km=None,
     self_exclude=False,
     max_obs=None,         # cap number of observed tokens (optional)
@@ -190,8 +199,11 @@ def add_transformer_masks(
     dataset.obs_y = []
     dataset.query_coords = []
     dataset.query_y = []
-    dataset.obs_mask = []
-    dataset.query_mask = []
+    dataset.obs_y_norm = []
+    dataset.obs_coords_norm = []
+    dataset.q_y_norm = []
+    #dataset.obs_mask = []
+    #dataset.query_mask = []
 
     # ensure tensors
     train_coords = train_coords.clone()
@@ -238,16 +250,25 @@ def add_transformer_masks(
             obs_y = obs_y[sel]
 
         # build masks
-        L = obs_coords.shape[0] + 1  # +1 for query token
-        obs_mask = torch.zeros(L, dtype=torch.bool); obs_mask[:L-1] = True
-        query_mask = torch.zeros(L, dtype=torch.bool); query_mask[-1] = True
+        #L = obs_coords.shape[0] + 1  # +1 for CLS token
+        #obs_mask = torch.zeros(L, dtype=torch.bool); obs_mask[:L-1] = True
+        #query_mask = torch.zeros(L, dtype=torch.bool); query_mask[-1] = True
+
+        # Normalized
+        obs_coords_norm = obs_coords[i] - q_coord
+        obs_y_norm = (obs_y - train_y_mean) / train_y_std
+        q_y_norm = (q_y - train_y_mean) / train_y_std
 
         dataset.obs_coords.append(obs_coords)
         dataset.obs_y.append(obs_y)
         dataset.query_coords.append(q_coord)
         dataset.query_y.append(q_y)
-        dataset.obs_mask.append(obs_mask[:L-1])  # keep mask per observed only if you prefer
-        dataset.query_mask.append(query_mask)
+        dataset.obs_coords_norm.append(obs_coords_norm)
+        dataset.obs_y_norm.append(obs_y_norm)
+        dataset.q_y_norm.append(q_y_norm)
+
+        #dataset.obs_mask.append(obs_mask[:L-1])  # keep mask per observed only if you prefer
+        #dataset.query_mask.append(query_mask)
 
 '''def haversine_dist(lat1, lon1, lat2, lon2):
     R = 6371  # Earth radius in kilometers
@@ -347,6 +368,21 @@ def load_dt2_data(args):
     validset.y = (validset.y - y_mean) / y_std
     testset.y  = (testset.y  - y_mean) / y_std
     calibset.y = (calibset.y - y_mean) / y_std
+
+    # # TODO: Optional but I think here it is needed
+    # trainset.obs_y = (trainset.obs_y - y_mean) / y_std
+    # validset.obs_y = (validset.obs_y - y_mean) / y_std
+    # testset.obs_y  = (testset.obs_y  - y_mean) / y_std
+    # calibset.obs_y = (calibset.obs_y - y_mean) / y_std
+
+    # # Stats for Δcoord standardization
+    # self.lat_std = trainset.coords[:, 0].std().item() + 1e-6
+    # self.lon_std = trainset.coords[:, 1].std().item() + 1e-6
+
+    # # Relative coords
+    # trainset.obs_coords = (mem_coords[:, 0] - cls_coord[0]) / self.lat_std
+    # dlon = (mem_coords[:, 1] - cls_coord[1]) / self.lon_std
+
 
     # Keep for inverse-transform if needed
     trainset.y_mean = y_mean

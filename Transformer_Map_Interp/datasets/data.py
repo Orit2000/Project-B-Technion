@@ -31,9 +31,9 @@ class SpatialDataset(torch.utils.data.Dataset):
         self.obs_y = None
         self.query_coords = None
         self.query_y = None
-        self.obs_mask = None
-        self.query_mask = None
-
+        self.q_y_norm = None
+        self.obs_coords_norm = None
+        self.obs_y_norm = None
 
     def __len__(self):
         return self.coords.shape[0] 
