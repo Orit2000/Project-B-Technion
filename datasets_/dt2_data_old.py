@@ -71,6 +71,12 @@ class DT2Dataset(Dataset):
 
     def __getitem__(self, idx):
         return self.coords[idx], self.features[idx], self.y[idx]
+def _summarize_obs_counts(name, dset):
+    # variable-length ragged lists
+    counts = [len(x) for x in dset.obs_coords]
+    import numpy as np
+    arr = np.array(counts)
+    print(f"[{name}] obs_count: mean={arr.mean():.1f} | median={np.median(arr):.0f} | min={arr.min()} | max={arr.max()} | N={len(arr)}")
 
 def load_dt2_data(args):
     """
@@ -139,6 +145,12 @@ def load_dt2_data(args):
             selected_idx_calib = perm[num_train + num_valid + num_test:]
             #trainset, validset, testset = sets_creation_func_equal(dataset, selected_idx, num_total_dataset,args)
             trainset, validset, testset, calibset = sets_creation_func(dataset, selected_idx_train, selected_idx_val, selected_idx_test, selected_idx_calib)
+                        
+            _summarize_obs_counts("train", trainset)
+            _summarize_obs_counts("valid", validset)
+            _summarize_obs_counts("test",  testset)
+            _summarize_obs_counts("calib", calibset)
+            
         elif(args.datasampling == 'normal' and args.setsdistribtuion=='equal'):
             # # Extract coordinate bounds
             # lat_min, lat_max = dataset.coords[:, 0].min().item(), dataset.coords[:, 0].max().item()

@@ -19,7 +19,7 @@ class TransformerCLSRegressor(nn.Module):
         num_layers: int = 4,
         dim_feedforward: int = 256,
         dropout: float = 0.1,
-        cls_init: str = "xavier",  # one of: 'xavier', 'zero', 'normal'
+        #cls_init: str = "xavier",  # one of: 'xavier', 'zero', 'normal'
         use_posenc: bool = False,
     ):
         super().__init__()
@@ -48,7 +48,7 @@ class TransformerCLSRegressor(nn.Module):
 
         self.out = nn.Linear(d_model, 1)
 
-        self.reset_parameters(cls_init)
+        #self.reset_parameters(cls_init)
 
     def reset_parameters(self, how: str):
         if how == "zero":

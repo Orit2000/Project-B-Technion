@@ -14,3 +14,8 @@ cache/*.pt
 logs/*.txt
 saved_models/*.pt
 .dt2
+runs/
+saved_models/
+*.dt2
+*.tif
+*.tiff

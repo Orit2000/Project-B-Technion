@@ -163,6 +163,11 @@ def sets_creation_func(dataset, selected_idx_train, selected_idx_val, selected_i
 
     trainset.y_mean = train_y_mean
     trainset.y_std  = train_y_std
+    
+    train_lat_std = trainset.coords[:,0].std().float().clamp_min(1e-6)
+    train_lon_std = trainset.coords[:,1].std().float().clamp_min(1e-6)
+    trainset.lat_std = train_lat_std
+    trainset.lon_std = train_lon_std
 
     add_transformer_masks(trainset, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
                       max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
@@ -208,7 +213,8 @@ def add_transformer_masks(
     # ensure tensors
     train_coords = train_coords.clone()
     train_y = train_y.clone()
-
+    dataset.y_norm = (dataset.y - train_y_mean) / train_y_std
+    
     for i in range(len(dataset)):
         q_coord = dataset.coords[i]
         q_y = dataset.y[i]
@@ -255,10 +261,21 @@ def add_transformer_masks(
         #query_mask = torch.zeros(L, dtype=torch.bool); query_mask[-1] = True
 
         # Normalized
-        obs_coords_norm = obs_coords[i] - q_coord
+        obs_coords_norm = obs_coords - q_coord
         obs_y_norm = (obs_y - train_y_mean) / train_y_std
         q_y_norm = (q_y - train_y_mean) / train_y_std
 
+        # --- enforce consistent shapes ---
+        # neighbors: (S,) not (S,1)
+        if obs_y.ndim == 2 and obs_y.size(-1) == 1:
+            obs_y = obs_y.squeeze(-1)
+        if obs_y_norm.ndim == 2 and obs_y_norm.size(-1) == 1:
+            obs_y_norm = obs_y_norm.squeeze(-1)
+
+        # query y: scalar ()
+        q_y = q_y.squeeze()
+        q_y_norm = q_y_norm.squeeze()
+        
         dataset.obs_coords.append(obs_coords)
         dataset.obs_y.append(obs_y)
         dataset.query_coords.append(q_coord)
@@ -267,17 +284,76 @@ def add_transformer_masks(
         dataset.obs_y_norm.append(obs_y_norm)
         dataset.q_y_norm.append(q_y_norm)
 
+    # --- finalize per-target tensors (uniform length N) ---
+    if isinstance(dataset.query_coords, list):
+        dataset.query_coords = torch.stack(
+            [torch.as_tensor(x, dtype=torch.float32) for x in dataset.query_coords], dim=0
+        )  # (N, 2)
+        
+    # if isinstance(dataset.obs_coords_norm, list):
+    #     dataset.obs_coords_norm = torch.stack(
+    #         [torch.as_tensor(x, dtype=torch.float32) for x in dataset.query_coords], dim=0
+    #     )  # (N, 2)
+    
+    # if isinstance(dataset.obs_coords, list):
+    #     dataset.obs_coords = torch.stack(
+    #         [torch.as_tensor(x, dtype=torch.float32) for x in dataset.query_coords], dim=0
+    #     )  # (N, 2)
+
+    if isinstance(dataset.q_y_norm, list):
+        dataset.q_y_norm = torch.stack(
+            [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y_norm], dim=0
+        ).squeeze(-1)  # (N,)
+        
+    if isinstance(dataset.query_y, list):
+        dataset.query_y = torch.stack(
+            [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y_norm], dim=0
+        ).squeeze(-1)
+        
+    # if isinstance(dataset.obs_y_norm, list):
+    #     dataset.obs_y_norm = torch.stack(
+    #         [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y_norm], dim=0
+    #     ).squeeze(-1)
+            
+    # if isinstance(dataset.obs_y, list):
+    #     dataset.obs_y = torch.stack(
+    #         [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y_norm], dim=0
+    #     ).squeeze(-1)   
+    
+    
         #dataset.obs_mask.append(obs_mask[:L-1])  # keep mask per observed only if you prefer
         #dataset.query_mask.append(query_mask)
 
-'''def haversine_dist(lat1, lon1, lat2, lon2):
-    R = 6371  # Earth radius in kilometers
-    dlat = torch.radians(lat2 - lat1)
-    dlon = torch.radians(lon2 - lon1)
-    a = torch.sin(dlat/2)**2 + torch.cos(torch.radians(lat1)) * torch.cos(torch.radians(lat2)) * torch.sin(dlon/2)**2
-    c = 2 * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a))
-    return R * c
-'''
+import os
+import numpy as np
+import pandas as pd
+import torch
+
+def _to1d(x):
+    if x is None: return np.array([])
+    if isinstance(x, torch.Tensor): x = x.detach().cpu().numpy()
+    x = np.asarray(x).reshape(-1)
+    x = x[np.isfinite(x)]  # drop NaN/inf
+    return x
+
+def save_y_series(sets_y: dict, csv_path: str):
+    """sets_y keys like: y_train, y_train_norm, y_val, y_val_norm, ..."""
+    rows = []
+    for k, arr in sets_y.items():
+        vals = _to1d(arr)
+        if vals.size == 0: 
+            continue
+        # parse key into split + norm flag
+        # expects keys like: y_train, y_train_norm
+        parts = k.split("_")
+        split = parts[1] if len(parts) >= 2 else "unknown"
+        is_norm = (len(parts) >= 3 and parts[2] == "norm")
+        for v in vals:
+            rows.append({"split": split, "is_norm": int(is_norm), "y": float(v)})
+    df = pd.DataFrame(rows)
+    os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
+    df.to_csv(csv_path, index=False)
+    print(f"[y] saved {len(df)} rows to {csv_path}")
 # =====================================
 # Main loader with 4-way split (train/valid/test/calib)
 # =====================================
@@ -292,7 +368,7 @@ def load_dt2_data(args):
     """
     # file path
     os.makedirs("Transformer_Map_Interp/cache/", exist_ok=True)
-    cache_key = f"{args.dataset}_k{args.n_neighbors}_keep_n{args.keep_n}"
+    cache_key = f"{args.dataset}_keep_n{args.keep_n}"
     dt2_file = os.path.join(args.data_path, args.dataset + ".tiff")
     print(f"[DEBUG] Using dt2_file path: {dt2_file}")
     assert os.path.isfile(dt2_file), f"File does not exist: {dt2_file}"
@@ -361,13 +437,13 @@ def load_dt2_data(args):
     print(f"num_total: {num_total_dataset}, num_train: {num_train}, num_val: {num_valid}, num_test: {num_test}, num_calib: {num_calib}")
 
     # ------- Normalize targets by train statistics -------
-    y_mean = trainset.y.mean(dim=0, keepdim=True)
-    y_std  = trainset.y.std(dim=0, keepdim=True) + 1e-6
+    # y_mean = trainset.y.mean(dim=0, keepdim=True) //Orit: removed - 13.10
+    # y_std  = trainset.y.std(dim=0, keepdim=True) + 1e-6
 
-    trainset.y = (trainset.y - y_mean) / y_std
-    validset.y = (validset.y - y_mean) / y_std
-    testset.y  = (testset.y  - y_mean) / y_std
-    calibset.y = (calibset.y - y_mean) / y_std
+    # trainset.y = (trainset.y - y_mean) / y_std
+    # validset.y = (validset.y - y_mean) / y_std
+    # testset.y  = (testset.y  - y_mean) / y_std
+    # calibset.y = (calibset.y - y_mean) / y_std
 
     # # TODO: Optional but I think here it is needed
     # trainset.obs_y = (trainset.obs_y - y_mean) / y_std
@@ -385,13 +461,21 @@ def load_dt2_data(args):
 
 
     # Keep for inverse-transform if needed
-    trainset.y_mean = y_mean
-    trainset.y_std  = y_std
+    # trainset.y_mean = y_mean //Orit: removed - 13.10
+    # trainset.y_std  = y_std
 
     # ------- Inspect & Cache -------
     inspect_dataset(trainset, name="Train")
     inspect_dataset(testset, name="Test")
-
+    sets_y = {
+        "y_train": trainset.y,
+        "y_train_norm":   trainset.y_norm,
+        "y_val":  validset.y,
+        "y_val_norm": validset.y_norm,
+        "y_test":  testset.y,
+        "y_test_norm": testset.y_norm,
+    }
+    save_y_series(sets_y, "y_values.csv")
     torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt")
     torch.save(validset, f"Transformer_Map_Interp/cache/validset_{cache_key}.pt")  # (fix) save validset correctly
     torch.save(testset,  f"Transformer_Map_Interp/cache/testset_{cache_key}.pt")

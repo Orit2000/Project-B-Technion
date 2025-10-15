@@ -135,12 +135,13 @@ from Transformer_Map_Interp.datasets.transformerRegressorDataClass import (
 )
 from Transformer_Map_Interp.datasets.dt2_data import load_dt2_data
 from Transformer_Map_Interp.models.transformerRegressor import TransformerCLSRegressor
+from torch.utils.tensorboard import SummaryWriter
 
 def debug_shape(phase, mem):
         B, S, F = mem.shape
         print(f"[{phase}] mem_tokens shape = (B={B}, S={S}, F={F})")
 
-def run_transformer(args) -> Tuple[float, float]:
+def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float, float]:
     """
     Trains and evaluates the decoder-only Transformer with a CLS token.
     Per-epoch logs: train/val loss (normalized), train/val MSE & MAE (in meters).
@@ -180,7 +181,7 @@ def run_transformer(args) -> Tuple[float, float]:
         for mem, mask, y, _ in loader:
             # (your dataset typically already yields tensors on device; .to is a no-op if so)
             mem, mask, y = mem.to(device), mask.to(device), y.to(device)
-            debug_shape(phase, mem)
+            #debug_shape(phase, mem)
             y_hat = model(mem, mask)
             loss = loss_fn(y_hat, y)
             tot_loss += loss.item() * y.size(0)
@@ -234,7 +235,7 @@ def run_transformer(args) -> Tuple[float, float]:
         num_layers=args.n_layers, # keep your arg names as-is
         dim_feedforward=args.ffn_dim,
         dropout=args.dropout,
-        cls_init=args.cls_init,
+        #cls_init=args.cls_init,
         use_posenc=args.use_posenc,
     ).to(dev)
 
@@ -265,10 +266,10 @@ def run_transformer(args) -> Tuple[float, float]:
         # ---- Train step (accumulate normalized train loss) ----
         model.train()
         train_loss_acc = 0.0
-        n_train = 0
+        n_train = 0 
         for mem, mask, y, _ in tqdm(train_loader, desc=f"[Epoch {epoch}] train"): #mem_tokens, pad_mask, y, cls_coords
             mem, mask, y = mem.to(dev), mask.to(dev), y.to(dev)
-            debug_shape("train", mem)
+            #debug_shape("train", mem)
             y_hat = model(mem, mask)
             loss = loss_fn(y_hat, y)
             optim.zero_grad()
@@ -303,6 +304,17 @@ def run_transformer(args) -> Tuple[float, float]:
             f"train_loss={train_loss_norm:.6f} | train_MSE={train_eval['mse']:.6f} | train_MAE={train_eval['mae']:.6f} || "
             f"val_loss={val_eval['loss']:.6f} | val_MSE={val_eval['mse']:.6f} | val_MAE={val_eval['mae']:.6f}"
         )
+        
+        if tb_writer:
+            tb_writer.add_scalar("loss/train", train_loss_norm, epoch)
+            tb_writer.add_scalar("loss/val",   val_eval['loss'] ,   epoch)
+
+            tb_writer.add_scalar("mse_raw/train", train_eval['mse'], epoch)
+            tb_writer.add_scalar("mse_raw/val",   val_eval['mse'],   epoch)
+            tb_writer.add_scalar("mae_raw/train", train_eval['mae'], epoch)
+            tb_writer.add_scalar("mae_raw/val",   val_eval['mae'],   epoch)
+
+            tb_writer.add_scalar("lr", optim.param_groups[0]["lr"], epoch)
 
         if val_eval["loss"] < best_val:
             best_val = val_eval["loss"]
@@ -314,7 +326,20 @@ def run_transformer(args) -> Tuple[float, float]:
             if recent > prev:
                 print(f"Early stopping at epoch {epoch}")
                 break
-
+    if tb_writer:
+    # pack your args into a flat dict of strings/numbers
+        hparams = {
+            "d_model": args.d_model,
+            "nhead": args.n_heads,
+            "layers": args.n_layers,
+            "ffn": args.ffn_dim,
+            "dropout": args.dropout,
+            "lr": args.lr,
+            "weight_decay": args.weight_decay,
+            "batch_size": args.batch_size,
+            "dataset": str(args.dataset),
+        }
+    
     # ---------------------------
     # Restore best & save metrics/model
     # ---------------------------
@@ -334,5 +359,11 @@ def run_transformer(args) -> Tuple[float, float]:
 
     test_mse, test_mae = _eval_loader(test_loader)
     print(f"TEST  MSE: {test_mse:.4f} | MAE: {test_mae:.4f}")
-
+        # final metrics you want shown in the hparams table:
+    final_metrics = {
+        "hp/test_mse_raw": float(test_mse),   # compute at test time
+        "hp/test_mae_raw": float(test_mae),
+    }
+    if tb_writer:
+        tb_writer.add_hparams(hparams, final_metrics)  
     return test_mse, test_mae

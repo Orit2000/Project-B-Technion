@@ -56,8 +56,8 @@ class TransformerPointDataset(Dataset):
         super().__init__()
         self.target_coords = targetset.query_coords.to(device)
         self.target_y = targetset.q_y_norm.to(device)  # normalized already by dt2_data
-        self.train_coords = trainset.coords.to(device)
-        self.train_y = trainset.y.to(device)    # normalized labels
+        #self.train_coords = trainset.coords.to(device)
+        #self.train_y = trainset.y.to(device)    # normalized labels
 
         # My changes
         # self.nei_y = targetset.obs_y#.to(device)
@@ -92,9 +92,11 @@ class TransformerPointDataset(Dataset):
         # Save label stats for de-normalization in evaluation if needed
         self.y_mean = getattr(trainset, "y_mean", None)
         self.y_std = getattr(trainset, "y_std", None)
-
+        
+        self.lat_std =  getattr(trainset, "lat_std", None)
+        self.lon_std =  getattr(trainset, "lon_std", None)
         # Flag to indicate exclusion during training - that is already have done no ? Is really needed?
-        self.is_training_targets = targetset is trainset
+        # self.is_training_targets = targetset is trainset
 
     def __len__(self):
         return self.target_coords.shape[0]
@@ -117,8 +119,8 @@ class TransformerPointDataset(Dataset):
         # Normalize relative to CLS for this idx
         # dlat = (mem_coords[:, 0] - cls[0]) / self.lat_std
         # dlon = (mem_coords[:, 1] - cls[1]) / self.lon_std
-        dlat = mem_coords[:, 0]
-        dlon = mem_coords[:, 1]
+        dlat = mem_coords[:, 0] / self.lat_std
+        dlon = mem_coords[:, 1] / self.lon_std
         # y to shape (S,)
         if mem_y.ndim > 1:
             mem_y = mem_y.squeeze(-1)
