@@ -482,3 +482,103 @@ def load_dt2_data(args):
     torch.save(calibset, f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
 
     return trainset, validset, testset, calibset
+
+def load_multi_dt2_data(args):
+    """
+    Load data for training, validation, test, and calibration from a DTED file.
+
+    Returns
+    -------
+    trainset, validset, testset, calibset : SpatialDataset objects
+    """
+ # 1. Setup File Paths and Cache Key
+    os.makedirs("Transformer_Map_Interp/cache/", exist_ok=True)
+    # The cache key now depends on the names of all input files, not just one base file.
+    file_list = [args.train_file, args.valid_file, args.test_file, args.calib_file]
+    cache_base = "_".join([os.path.basename(f).split('.')[0] for f in file_list])
+    cache_key = f"{cache_base}_keep_n{args.keep_n}_seed{args.random_seed}"
+
+    # Define paths for loading DT2Dataset and creating cache keys
+    set_configs = {
+        "train": os.path.join(args.data_path, args.train_file),
+        "valid": os.path.join(args.data_path, args.valid_file),
+        "test": os.path.join(args.data_path, args.test_file),
+        "calib": os.path.join(args.data_path, args.calib_file),
+    }
+
+    # Verify all input files exist
+    for name, path in set_configs.items():
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"File for {name} set does not exist: {path}")
+
+    # Check for cache existence
+    cache_exists = all(
+        os.path.exists(f"Transformer_Map_Interp/cache/{name}set_{cache_key}.pt")
+        for name in set_configs
+    )
+
+    if cache_exists and (args.new_spread == False):
+        print("Loading cached sets...")
+        trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt", weights_only=False)
+        validset = torch.load(f"Transformer_Map_Interp/cache/validset_{cache_key}.pt", weights_only=False)
+        testset  = torch.load(f"Transformer_Map_Interp/cache/testset_{cache_key}.pt",  weights_only=False)
+        calibset = torch.load(f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt", weights_only=False)
+        return trainset, validset, testset, calibset
+
+    print("Creating and caching sets...")
+    
+    # 2. Load Datasets Individually
+    raw_datasets = {}
+    for name, dt2_file in set_configs.items():
+        print(f"[DEBUG] Loading {name} from: {dt2_file}")
+        raw_datasets[name] = DT2Dataset(
+            dt2_file=dt2_file, 
+            include_elevation_in_features=False, 
+            normalize=getattr(args, 'normalize_elev', False)
+        )
+    # 3. Subsample and Create Final Sets (Deterministic)
+    rng = np.random.RandomState(seed=args.random_seed)
+    final_sets = {}
+
+    for name, dataset in raw_datasets.items():
+        total = dataset.coords.shape[0]
+        # Get the specific keep_n ratio for this set
+        keep_ratio = args.keep_n[name]
+        keep_n = int(total * keep_ratio)
+        
+        
+        # Subsample indices deterministically
+        selected_idx = rng.choice(total, size=keep_n, replace=False)
+        
+        # Create the final SpatialDataset using the selected indices
+        # We assume sets_creation_func can handle a single dataset/index list
+        final_sets[name] = sets_creation_func(dataset, selected_idx, args.max_km)
+        
+        print(f"Num {name}: {total} total, {keep_n} kept ({args.keep_n*100:.1f}%)")
+
+    trainset = final_sets['train']
+    validset = final_sets['valid']
+    testset = final_sets['test']
+    calibset = final_sets['calib']
+
+     # ------- Inspect & Cache -------
+    inspect_dataset(trainset, name="Train")
+    inspect_dataset(testset, name="Test")
+    
+    sets_y = {
+        "y_train": trainset.y,
+        "y_train_norm": trainset.y_norm,
+        "y_val": validset.y,
+        "y_val_norm": validset.y_norm,
+        "y_test": testset.y,
+        "y_test_norm": testset.y_norm,
+    }
+    save_y_series(sets_y, "y_values.csv")
+
+    # Cache the final SpatialDataset objects
+    torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt")
+    torch.save(validset, f"Transformer_Map_Interp/cache/validset_{cache_key}.pt")
+    torch.save(testset,  f"Transformer_Map_Interp/cache/testset_{cache_key}.pt")
+    torch.save(calibset, f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
+
+    return trainset, validset, testset, calibset
