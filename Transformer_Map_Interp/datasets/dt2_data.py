@@ -483,6 +483,55 @@ def load_dt2_data(args):
 
     return trainset, validset, testset, calibset
 
+def parse_keep_n_dict(s: str) -> dict[str, float]:
+    out = {}
+    if not s:
+        return out
+    for part in s.split(","):
+        part = part.strip()
+        if not part:
+            continue
+        if ":" not in part:
+            raise ValueError(f"Bad keep_n_dict entry (missing ':'): {part}")
+        k, v = part.split(":", 1)
+        k = k.strip().lower()
+        try:
+            v = float(v.strip())
+        except ValueError:
+            raise ValueError(f"Bad float for keep_n_dict[{k!r}]: {v!r}")
+        if not (0.0 < v <= 1.0):
+            raise ValueError(f"keep_n value for {k!r} must be in (0,1], got {v}")
+        out[k] = v
+    return out
+
+def set_creation_func(dataset, selected_idx, max_radius_km, trainset=None):
+    set = SpatialDataset(
+        coords=dataset.coords[selected_idx].numpy(),
+        features=dataset.features[selected_idx].numpy(),
+        y=dataset.y[selected_idx].numpy()
+    )
+    if trainset == None:
+        # labels stats (scalars)
+        train_y_mean = torch.as_tensor(set.y.mean(), dtype=torch.float32)
+        train_y_std  = torch.as_tensor(set.y.std(),  dtype=torch.float32).clamp_min(1e-6)
+
+        set.y_mean = train_y_mean
+        set.y_std  = train_y_std
+        train_lat_std = set.coords[:,0].std().float().clamp_min(1e-6)
+        train_lon_std = set.coords[:,1].std().float().clamp_min(1e-6)
+        set.lat_std = train_lat_std
+        set.lon_std = train_lon_std
+
+        add_transformer_masks(set, set.coords, set.y, set.y_mean, set.y_std,
+                      max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
+    else:
+
+        add_transformer_masks(set, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
+                      max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
+    
+
+    return set
+
 def load_multi_dt2_data(args):
     """
     Load data for training, validation, test, and calibration from a DTED file.
@@ -539,21 +588,23 @@ def load_multi_dt2_data(args):
     # 3. Subsample and Create Final Sets (Deterministic)
     rng = np.random.RandomState(seed=args.random_seed)
     final_sets = {}
+    keep_n_dict = parse_keep_n_dict(args.keep_n_dict)
 
     for name, dataset in raw_datasets.items():
         total = dataset.coords.shape[0]
         # Get the specific keep_n ratio for this set
-        keep_ratio = args.keep_n[name]
+        keep_ratio = keep_n_dict[name]
         keep_n = int(total * keep_ratio)
         
         
         # Subsample indices deterministically
         selected_idx = rng.choice(total, size=keep_n, replace=False)
-        
         # Create the final SpatialDataset using the selected indices
         # We assume sets_creation_func can handle a single dataset/index list
-        final_sets[name] = sets_creation_func(dataset, selected_idx, args.max_km)
-        
+        if name == 'train':
+            final_sets[name] = set_creation_func(dataset, selected_idx, args.max_km)
+        else:
+            final_sets[name] = set_creation_func(dataset, selected_idx, args.max_km, final_sets['train'])
         print(f"Num {name}: {total} total, {keep_n} kept ({args.keep_n*100:.1f}%)")
 
     trainset = final_sets['train']

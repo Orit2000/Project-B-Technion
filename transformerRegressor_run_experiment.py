@@ -133,7 +133,7 @@ from tqdm import tqdm
 from Transformer_Map_Interp.datasets.transformerRegressorDataClass import (
     TransformerPointDataset, collate_point_batches
 )
-from Transformer_Map_Interp.datasets.dt2_data import load_dt2_data
+from Transformer_Map_Interp.datasets.dt2_data import load_dt2_data, load_multi_dt2_data
 from Transformer_Map_Interp.models.transformerRegressor import TransformerCLSRegressor
 from torch.utils.tensorboard import SummaryWriter
 
@@ -202,8 +202,8 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
     # ---------------------------
     # 1) Load data (train/val/test/calib)
     # ---------------------------
-    trainset, validset, testset, calibset = load_dt2_data(args)  # calibset not used yet
-
+    #trainset, validset, testset, calibset = load_dt2_data(args)  # calibset not used yet
+    trainset, validset, testset, calibset = load_multi_dt2_data(args)  # calibset not used yet
     # ---------------------------
     # 2) Neighbor index over TRAIN only
     # ---------------------------
