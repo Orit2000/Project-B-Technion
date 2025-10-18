@@ -7,6 +7,8 @@ import os
 from matplotlib import pyplot as plt
 from scipy.stats import multivariate_normal
 from sklearn.neighbors import KDTree
+import time
+
 # =====================================
 # DT2Dataset: reads a single .tiff/.dt2 tile
 # =====================================
@@ -706,6 +708,7 @@ def load_multi_dt2_data(args):
     trainset, validset, testset, calibset : SpatialDataset objects
     """
  # 1. Setup File Paths and Cache Key
+    t0 = time.perf_counter()  # start as early as possible
     os.makedirs("Transformer_Map_Interp/cache/", exist_ok=True)
     # The cache key now depends on the names of all input files, not just one base file.
     file_list = [args.train_file, args.valid_file, args.test_file, args.calib_file]
@@ -767,8 +770,10 @@ def load_multi_dt2_data(args):
         # Create the final SpatialDataset using the selected indices
         # We assume sets_creation_func can handle a single dataset/index list
         if name == 'train':
+            print("Creating train set...")
             final_sets[name] = set_creation_func(dataset, selected_idx, args.max_km)
         else:
+            print(f"Creating {name} set...")
             final_sets[name] = set_creation_func(dataset, selected_idx, args.max_km, final_sets['train'])
         print(f"Num {name}: {total} total, {keep_n} kept ({args.keep_n*100:.1f}%)")
 
@@ -796,5 +801,5 @@ def load_multi_dt2_data(args):
     torch.save(validset, f"Transformer_Map_Interp/cache/validset_{cache_key}.pt")
     torch.save(testset,  f"Transformer_Map_Interp/cache/testset_{cache_key}.pt")
     torch.save(calibset, f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
-
+    print (f"build Kdtree Lap: {time.perf_counter() - t0:.3f}s")
     return trainset, validset, testset, calibset

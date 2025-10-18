@@ -66,10 +66,10 @@ def parse_opt():
     parser.add_argument('--ffn_dim', type=int, default=256)
     #args, unknowns = parser.parse_known_args()
     #args = parser.parse_args(custom_args)  # ← don't use sys.argv at all
-    parser.add_argument('--train_file', type=str, default="n33_e035_1arc_v3_sampled.tif")
-    parser.add_argument('--valid_file', type=str, default="n32_e035_1arc_v3_sampled.tif")
-    parser.add_argument('--test_file', type=str, default="n32_e034_1arc_v3_sampled.tif")
-    parser.add_argument('--calib_file', type=str, default="n32_e035_1arc_v3_sampled.tif")
+    parser.add_argument('--train_file', type=str, default="n33_e035_1arc_v3.dt2")
+    parser.add_argument('--valid_file', type=str, default="n32_e035_1arc_v3.dt2")
+    parser.add_argument('--test_file', type=str, default="n32_e034_1arc_v3.dt2")
+    parser.add_argument('--calib_file', type=str, default="n32_e035_1arc_v3.dt2")
     parser.add_argument('--keep_n_dict', type=str, default="train:0.05,valid:0.005,test:0.005,calib:0.000001")
 
     args, unknowns = parser.parse_known_args()

@@ -6,6 +6,7 @@ from torch.utils.tensorboard import SummaryWriter
 import os
 os.environ["TENSORBOARD_NO_TF"] = "1"      # tell TB to use its 'notf' path
 if __name__ == "__main__":
+    
     args = parse_opt()
     # Select Transformer model & typical hyperparams
     args.model = "transformer"
