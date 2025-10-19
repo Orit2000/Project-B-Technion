@@ -34,9 +34,6 @@ def cropped_to_tiff(dt2_file, output_path):
 
 # -------------------- Parameters --------------------
 dt2_file = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3.dt2"
-min_lon, max_lon = 35.8, 36  # Avoid the sea!
-min_lat, max_lat = 32.4, 32.6
-
 # -------------------- Load Full Map --------------------
 with rasterio.open(dt2_file) as src:
     elevation = src.read(1)
@@ -49,6 +46,28 @@ with rasterio.open(dt2_file) as src:
     lat_res_m, lon_res_m = degrees_to_meters(degree_res_x, mid_latitude)
 vmin = np.min(elevation)
 vmax = np.max(elevation)
+
+dx = bounds.right - bounds.left
+dy = bounds.top - bounds.bottom
+fraction_dx = dx / 8
+fraction_dy = dy / 8
+
+# cropping_val = [bounds.left, bounds.left + fraction_dx]
+# cropping_train = [bounds.left + fraction_dx, bounds.left + 7*fraction_dx]
+# cropping_test = [bounds.left + 7*fraction_dx, bounds.right]
+
+cropping_val = [bounds.bottom, bounds.bottom + fraction_dy]
+cropping_train = [bounds.bottom + fraction_dy, bounds.bottom + 7*fraction_dy]
+cropping_test = [bounds.bottom + 7*fraction_dy, bounds.top]
+
+# min_lon, max_lon = 35.8, 36  # Avoid the sea!
+# min_lat, max_lat = 32.4, 32.6
+
+# min_lon, max_lon = cropping_val # Avoid the sea!
+# min_lat, max_lat = bounds.bottom , bounds.top
+
+min_lon, max_lon =  bounds.left , bounds.right # Avoid the sea!
+min_lat, max_lat = cropping_test
 # -------------------- Plot Full Map with Crop Box --------------------
 plt.figure(figsize=(10, 8))
 plt.imshow(elevation, cmap='terrain', extent=extent, origin='upper', vmin=vmin, vmax=vmax)
@@ -71,7 +90,6 @@ print(f"Resolution in Meters: {lat_res_m:.2f}m x {lon_res_m:.2f}m")
 #print(f"Size: {width} x {height} pixels")
 print(f"Extent: {bounds}")
 print(f"ranges of elevations: [{int(np.min(elevation)), int(np.max(elevation))}]")
-
 # -------------------- Crop Operation --------------------
 with rasterio.open(dt2_file) as src:
     window = from_bounds(min_lon, min_lat, max_lon, max_lat, src.transform)
@@ -79,7 +97,7 @@ with rasterio.open(dt2_file) as src:
     transform = src.window_transform(window)
 
 # ------------------- Saving cropped ---------------------
-output_path = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_tiff.tiff"
+output_path = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_test.tiff"
 with rasterio.open(dt2_file) as src:
     window = from_bounds(min_lon, min_lat, max_lon, max_lat, src.transform)
     cropped = src.read(1, window=window)

@@ -202,8 +202,8 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
     # ---------------------------
     # 1) Load data (train/val/test/calib) 
     # ---------------------------
-    #trainset, validset, testset, calibset = load_dt2_data(args)  # calibset not used yet
-    trainset, validset, testset, calibset = load_multi_dt2_data(args)  # calibset not used yet
+    trainset, validset, testset, calibset = load_dt2_data(args)  # calibset not used yet
+    #trainset, validset, testset, calibset = load_multi_dt2_data(args)  # calibset not used yet
     # ---------------------------
     # 2) Neighbor index over TRAIN only
     # ---------------------------

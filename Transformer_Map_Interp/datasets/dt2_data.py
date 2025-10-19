@@ -637,6 +637,7 @@ def load_dt2_data(args):
         "y_test":  testset.y,
         "y_test_norm": testset.y_norm,
     }
+    print(f"Elevation shape is: {trainset.y.shape}\n")
     save_y_series(sets_y, "y_values.csv")
     torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt")
     torch.save(validset, f"Transformer_Map_Interp/cache/validset_{cache_key}.pt")  # (fix) save validset correctly

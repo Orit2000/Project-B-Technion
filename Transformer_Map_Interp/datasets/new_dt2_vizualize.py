@@ -8,7 +8,7 @@ def meters_per_degree(latitude_deg):
     return lat_m, lon_m
 
 # Load the DTED file
-dt2_file = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped.tiff" 
+dt2_file = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_val.tiff" 
 #dt2_file = "Transformer_Map_Interp/datasets/n33_e035_1arc_v3.dt2"
 with rasterio.open(dt2_file) as dataset:
     elevation = dataset.read(1)

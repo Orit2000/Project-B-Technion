@@ -13,7 +13,8 @@ def degrees_to_meters(degree_res, latitude):
     return lat_res_m, lon_res_m 
 
 # Load the DTED file
-dt2_file = "Transformer_Map_Interp/datasets/n33_e035_1arc_v3.dt2"
+dt2_file = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_val.tiff"
+
 with rasterio.open(dt2_file) as dataset:
     elevation = dataset.read(1)  # Read the first band (elevation values)
     extent = [dataset.bounds.left, dataset.bounds.right, dataset.bounds.bottom, dataset.bounds.top]  # Get geographical extent
@@ -43,3 +44,20 @@ plt.xlabel("Longitude")
 plt.ylabel("Latitude")
 plt.show()
 plt.savefig("Transformer_Map_Interp/datasets/dt2_region.png")
+
+# --- Elevation histogram ---
+# Flatten and drop masked (NoData) values
+elev_vals = elevation.flatten()  # same as np.array(elevation[~elevation.mask])
+
+# Optional: clip extreme outliers for nicer visualization (comment out if not desired)
+# q1, q99 = np.percentile(elev_vals, [1, 99])
+# elev_vals = elev_vals[(elev_vals >= q1) & (elev_vals <= q99)]
+
+plt.figure(figsize=(9, 6))
+plt.hist(elev_vals, bins=100)  # adjust bins as you like
+plt.xlabel("Elevation (m)")
+plt.ylabel("Count")
+plt.title("Elevation Histogram")
+plt.tight_layout()
+plt.savefig("Transformer_Map_Interp/datasets/dt2_elevation_hist.png", dpi=200)
+plt.show()
