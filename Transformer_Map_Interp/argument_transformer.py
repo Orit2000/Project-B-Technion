@@ -43,8 +43,8 @@ def parse_opt():
     
     parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate.')
     parser.add_argument('--weight_decay', type=float, default=3e-4, help='Weight decay for the optimizer.')
-    parser.add_argument('--epochs', type=int, default=100, help='Number of training epochs.')
-    parser.add_argument('--es_patience', type=int, default=20, help='Patience for early stopping.')
+    parser.add_argument('--epochs', type=int, default=15, help='Number of training epochs.')
+    parser.add_argument('--es_patience', type=int, default=7, help='Patience for early stopping.')
     parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
     
     parser.add_argument('--device', type=str, default="auto", help='Computation device.')
@@ -83,7 +83,7 @@ def parse_opt():
     parser.add_argument('--valid_file', type=str, default="n32_e035_1arc_v3_cropped_val.tiff")
     parser.add_argument('--test_file', type=str, default="n32_e035_1arc_v3_cropped_test.tiff")
     parser.add_argument('--calib_file', type=str, default="n32_e035_1arc_v3__cropped_test.tiff")
-    parser.add_argument('--keep_n_dict', type=str, default="train:0.05,valid:0.005,test:0.005,calib:0.000001")
+    parser.add_argument('--keep_n_dict', type=str, default="train:0.05,valid:0.05,test:0.05,calib:0.000001") #Orit - I changes this!! from 0.005 to 0.05
 
     args, unknowns = parser.parse_known_args()
     args.save_path = f"saved_models/{args.model}_{args.dataset}/"

@@ -83,6 +83,9 @@ print(f"map on test: {interp_map_test}")
 test_error = test_y_true - test_y_interp
 valid_error = valid_y_true - valid_y_interp
 
+print("MSE\MAP results...")
+print(f"Test MSE: {interp_mse_test}, Test MAP: {interp_map_test}")
+print(f"Valid MSE: {interp_mse_valid}, Valid MAP: {interp_map_valid}")
 # Plot error map
 plt.figure(1)
 sc = plt.scatter(test_coords[:, 1], test_coords[:, 0], c=test_error, cmap="coolwarm", s=5)
@@ -102,7 +105,7 @@ plt.xlabel("Longitude")
 plt.ylabel("Latitude")
 plt.title(f"Interpolation Error Map Valid ({interp_method})")
 plt.grid(True)
-plt.savefig("basic_interp_reference/error_on_map_valis.png", dpi=300, bbox_inches='tight')
+plt.savefig("./Transformer_Map_Interp/basic_interp_results/error_on_map_valid.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 # Histogram
@@ -112,7 +115,7 @@ plt.title(f"Error Test Histogram - {interp_method} Interpolation")
 plt.xlabel("Error (m)")
 plt.ylabel("Amount")
 plt.grid(True)
-plt.savefig("basic_interp_reference/Error_Test_Histogram.png", dpi=300, bbox_inches='tight')
+plt.savefig("./Transformer_Map_Interp/basic_interp_results/Error_Test_Histogram.png", dpi=300, bbox_inches='tight')
 plt.show()
 
 plt.figure(figsize=(10, 8))
@@ -121,6 +124,6 @@ plt.title(f"Error Valid Histogram - {interp_method} Interpolation")
 plt.xlabel("Error(m)")
 plt.ylabel("Amount")
 plt.grid(True)
-plt.savefig("basic_interp_reference/Error_Valid_Histogram.png", dpi=300, bbox_inches='tight')
+plt.savefig("./Transformer_Map_Interp/basic_interp_results/Error_Valid_Histogram.png", dpi=300, bbox_inches='tight')
 plt.show()
 

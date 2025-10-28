@@ -40,4 +40,4 @@ if __name__ == "__main__":
 
     test_mse, test_mae = run_transformer(args, tb_writer=writer)
     print(f"Done. Test MSE={test_mse:.4f}, MAE={test_mae:.4f}")
-    writer.close()
+    #writer.close()

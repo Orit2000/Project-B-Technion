@@ -67,7 +67,7 @@ cropping_test = [bounds.bottom + 7*fraction_dy, bounds.top]
 # min_lat, max_lat = bounds.bottom , bounds.top
 
 min_lon, max_lon =  bounds.left , bounds.right # Avoid the sea!
-min_lat, max_lat = cropping_train
+min_lat, max_lat = cropping_test
 # -------------------- Plot Full Map with Crop Box --------------------
 plt.figure(figsize=(10, 8))
 plt.imshow(elevation, cmap='terrain', extent=extent, origin='upper', vmin=vmin, vmax=vmax)
@@ -97,7 +97,7 @@ with rasterio.open(dt2_file) as src:
     transform = src.window_transform(window)
 
 # ------------------- Saving cropped ---------------------
-output_path = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_train.tiff"
+output_path = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_test.tiff"
 with rasterio.open(dt2_file) as src:
     window = from_bounds(min_lon, min_lat, max_lon, max_lat, src.transform)
     cropped = src.read(1, window=window)

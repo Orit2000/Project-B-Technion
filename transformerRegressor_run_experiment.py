@@ -194,6 +194,19 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
             best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
             torch.save(model.state_dict(), os.path.join(save_dir, f"best_model_{epoch}.pt"))
             print(f" New best model at epoch {epoch} with val_loss={best_val:.6f}")
+            
+        if (epoch % 5) == 0:
+            ckpt_path = os.path.join(save_dir, f"checkpoint_epoch{epoch+1}.pt")
+            torch.save({
+                "epoch": epoch + 1,
+                "model_state": model.state_dict(),
+                "optimizer_state": optim.state_dict(),
+                "best_val": best_val,
+                "metrics": metrics_rows,
+            }, ckpt_path)
+            print(f" 💾 Checkpoint saved at epoch {epoch+1} -> {ckpt_path}")
+            if tb_writer:
+                tb_writer.add_text("checkpoint", f"Saved checkpoint (epoch {epoch+1})", epoch)
 
         if (epoch > args.es_patience) and (len(metrics_rows) > (args.es_patience + 3)):
             recent = sum(r["val_loss_norm"] for r in metrics_rows[-3:]) / 3
@@ -201,6 +214,7 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
             if recent > prev:
                 print(f"Early stopping at epoch {epoch}")
                 break
+        
     if tb_writer:
     # pack your args into a flat dict of strings/numbers
         hparams = {

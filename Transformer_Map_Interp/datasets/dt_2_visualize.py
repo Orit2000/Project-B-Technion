@@ -13,7 +13,7 @@ def degrees_to_meters(degree_res, latitude):
     return lat_res_m, lon_res_m 
 
 # Load the DTED file
-dt2_file = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_val.tiff"
+dt2_file = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_test_.tiff"
 
 with rasterio.open(dt2_file) as dataset:
     elevation = dataset.read(1)  # Read the first band (elevation values)
