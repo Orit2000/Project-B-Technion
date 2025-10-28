@@ -64,12 +64,25 @@ def parse_opt():
     parser.add_argument('--use_posenc', type=bool, default=False)
     #parser.add_argument('--cls_init', type=str, default='xavier', choices=['xavier', 'zero', 'normal'])
     parser.add_argument('--ffn_dim', type=int, default=256)
+    parser.add_argument(
+    "--neighbor_ratio",
+    type=float,
+    default=1.0,
+    help="Fraction (0–1] of extra (non-train) points used when neighbors_train_only=False. "
+         "For example, 0.25 means use only 25% of val/test points as additional neighbors."
+    )
+    parser.add_argument(
+    "--neighbors_train_only",
+    type=bool, default=False,
+    help="If set, neighbors for val/test/calib are taken only from the training set. "
+         "If unset, neighbors are drawn from both train and the current split."
+)
     #args, unknowns = parser.parse_known_args()
     #args = parser.parse_args(custom_args)  # ← don't use sys.argv at all
-    parser.add_argument('--train_file', type=str, default="n33_e035_1arc_v3.dt2")
-    parser.add_argument('--valid_file', type=str, default="n32_e035_1arc_v3.dt2")
-    parser.add_argument('--test_file', type=str, default="n32_e034_1arc_v3.dt2")
-    parser.add_argument('--calib_file', type=str, default="n32_e035_1arc_v3.dt2")
+    parser.add_argument('--train_file', type=str, default="n32_e035_1arc_v3_cropped_train.tiff")
+    parser.add_argument('--valid_file', type=str, default="n32_e035_1arc_v3_cropped_val.tiff")
+    parser.add_argument('--test_file', type=str, default="n32_e035_1arc_v3_cropped_test.tiff")
+    parser.add_argument('--calib_file', type=str, default="n32_e035_1arc_v3__cropped_test.tiff")
     parser.add_argument('--keep_n_dict', type=str, default="train:0.05,valid:0.005,test:0.005,calib:0.000001")
 
     args, unknowns = parser.parse_known_args()

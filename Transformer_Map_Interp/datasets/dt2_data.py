@@ -338,12 +338,12 @@ def add_transformer_masks(
         #dataset.query_mask.append(query_mask)
 def faster_add_transformer_masks(
     dataset,
-    train_coords,
-    train_y,
+    nei_coords,
+    nei_y,
     train_y_mean, 
     train_y_std,
     max_radius_km=None,
-    self_exclude=False,
+    self_exclude=True,
     max_obs=None,         # cap number of observed tokens (optional)
     min_k=8,              # fallback K if radius leaves too few neighbors
     coord_atol=1e-9       # tolerance for coordinate equality
@@ -353,15 +353,22 @@ def faster_add_transformer_masks(
     #   x_km = (lon_deg) * (111.320 * cos(lat0_deg))
     #   y_km = (lat_deg) * 110.574
     with torch.no_grad():
-        train_lat_deg = train_coords[:, 0].cpu().double().numpy()
-        train_lon_deg = train_coords[:, 1].cpu().double().numpy()
-    lat0 = float(np.mean(train_lat_deg))
+        nei_lat_deg = nei_coords[:, 0].cpu().double().numpy()
+        nei_lon_deg = nei_coords[:, 1].cpu().double().numpy()
+    lat0 = float(np.mean(nei_lat_deg))
     k_lat = 110.574                # km per 1 degree latitude
     k_lon = 111.320 * np.cos(np.deg2rad(lat0))  # km per 1 degree longitude at lat0
 
-    train_xy_km = np.stack([train_lon_deg * k_lon, train_lat_deg * k_lat], axis=1)
-    kdt = KDTree(train_xy_km, metric='euclidean')
-
+    nei_xy_km = np.stack([nei_lon_deg * k_lon, nei_lat_deg * k_lat], axis=1)
+    # if(neighbors_train_only == True and set=='train'):
+    print("Building KDTree on neighbor coords...")
+    kdt = KDTree(nei_xy_km, metric='euclidean')
+       
+    # else:
+    #     //take using percentage_from_target points out of the target set
+    #     // concat with the trainging data
+    #     kdt = KDTree(train_plus_target_xy_km, metric='euclidean')
+        
     dataset.obs_coords = []
     dataset.obs_y = []
     dataset.query_coords = []
@@ -376,53 +383,107 @@ def faster_add_transformer_masks(
     #train_coords = train_coords.clone()
     #train_y = train_y.clone()
     dataset.y_norm = (dataset.y - train_y_mean) / train_y_std
-    Ntrain = train_coords.shape[0]
+    N_nei = nei_coords.shape[0]
 
+    # The NEWER, FASTER APPROACH: single KDTree query per target point
+    # Inside faster_add_transformer_masks, before the loop
+    q_coords_all = dataset.coords.cpu().double().numpy()
+    q_lat_all = q_coords_all[:, 0]
+    q_lon_all = q_coords_all[:, 1]
+
+    # This is your k_lat and k_lon from the train_coords
+    q_xy_all = np.stack([q_lon_all * k_lon, q_lat_all * k_lat], axis=1)
+    
+    # Query all points at once for radius
+    if max_radius_km is not None:
+        # This returns a list of arrays, one array of indices per query point
+        print("Starting batch radius query...")
+        all_inds_list = kdt.query_radius(q_xy_all, r=max_radius_km, return_distance=False)
+        print(f"Number of neighbors per query (first 10): {[len(inds) for inds in all_inds_list[:10]]}")
+    else:
+        # Fallback: just return indices for all N_train points for each query
+        all_inds_list = [np.arange(N_nei) for _ in range(len(q_xy_all))]
+
+    # Run a separate batch query for the min_k fallback (if needed)
+    # This returns one big array (N_queries, k)
+    # all_inds_knn = kdt.query(q_xy_all, k=min(min_k + 1, Ntrain), return_distance=False)
+    
+    # Now loop through the *results*
     for i in range(len(dataset)):
         q_coord = dataset.coords[i]
         q_y = dataset.y[i]
 
-        q_lat = float(q_coord[0].item())
-        q_lon = float(q_coord[1].item())
-        q_xy  = np.array([[q_lon * k_lon, q_lat * k_lat]], dtype=float)
-        ## --- 1) radius neighbors if specified ---
-        if max_radius_km is not None:
-            inds = kdt.query_radius(q_xy, r=max_radius_km, return_distance=False)[0]
-            if (i%1000 == 0):
-                print(f"Number of neighbors:{len(inds)}")
-        else:
-            # consider all points if no radius constraint
-            inds = np.arange(Ntrain)
+        inds = all_inds_list[i] # Get the pre-computed indices
 
-        # --- self-exclude (exact coord match in degrees) ---
+        # --- self-exclude logic (can also be vectorized) ---
         if self_exclude:
-            same_lat = torch.isclose(train_coords[:, 0], q_coord[0], atol=coord_atol).cpu().numpy()
-            same_lon = torch.isclose(train_coords[:, 1], q_coord[1], atol=coord_atol).cpu().numpy()
+            same_lat = torch.isclose(nei_coords[:, 0], q_coord[0], atol=coord_atol).cpu().numpy()
+            same_lon = torch.isclose(nei_coords[:, 1], q_coord[1], atol=coord_atol).cpu().numpy()
             same_pt_mask = same_lat & same_lon
-            if inds.size == Ntrain:
+            if inds.size == N_nei:
                 inds = np.where(~same_pt_mask)[0]
             else:
                 inds = inds[~same_pt_mask[inds]]
 
-        # --- 2) ensure at least min_k via kNN fallback ---
-        if (inds is None) or (len(inds) < min_k):
-            print("second query")
-            k = min(min_k + (1 if self_exclude else 0), Ntrain)
-            # distances ignored; we only need indices
-            ind_knn = kdt.query(q_xy, k=k, return_distance=False)[0]
-            if self_exclude:
-                same_lat = torch.isclose(train_coords[ind_knn, 0], q_coord[0], atol=coord_atol).cpu().numpy()
-                same_lon = torch.isclose(train_coords[ind_knn, 1], q_coord[1], atol=coord_atol).cpu().numpy()
-                mask = ~(same_lat & same_lon)
-                ind_knn = ind_knn[mask]
-            inds = ind_knn[:min_k] if len(ind_knn) > min_k else ind_knn
+        # # --- ensure at least min_k via kNN fallback ---
+        # if (inds is None) or (len(inds) < min_k):
+        #     ind_knn = all_inds_knn[i]
+        #     # ... (your logic to process ind_knn) ...
+        #     inds = ind_knn[:min_k] 
+
+        # --- slice neighbor data ---
+        torch_inds = torch.as_tensor(inds, dtype=torch.long)
+        obs_coords = nei_coords[torch_inds]
+        obs_y = nei_y[torch_inds]
+
+    # ... (rest of your normalization and appending logic) ...
+    
+    # The unoptimized way: loop over target points
+    # for i in range(len(dataset)):
+    #     q_coord = dataset.coords[i]
+    #     q_y = dataset.y[i]
+
+    #     q_lat = float(q_coord[0].item())
+    #     q_lon = float(q_coord[1].item())
+    #     q_xy  = np.array([[q_lon * k_lon, q_lat * k_lat]], dtype=float)
+    #     ## --- 1) radius neighbors if specified ---
+    #     if max_radius_km is not None:
+    #         inds = kdt.query_radius(q_xy, r=max_radius_km, return_distance=False)[0]
+    #         if (i%1000 == 0):
+    #             print(f"Number of neighbors:{len(inds)}")
+    #     else:
+    #         # consider all points if no radius constraint
+    #         inds = np.arange(Ntrain)
+
+        # # --- self-exclude (exact coord match in degrees) ---
+        # if self_exclude:
+        #     same_lat = torch.isclose(train_coords[:, 0], q_coord[0], atol=coord_atol).cpu().numpy()
+        #     same_lon = torch.isclose(train_coords[:, 1], q_coord[1], atol=coord_atol).cpu().numpy()
+        #     same_pt_mask = same_lat & same_lon
+        #     if inds.size == Ntrain:
+        #         inds = np.where(~same_pt_mask)[0]
+        #     else:
+        #         inds = inds[~same_pt_mask[inds]]
+
+        # # --- 2) ensure at least min_k via kNN fallback ---
+        # if (inds is None) or (len(inds) < min_k):
+        #     print("second query")
+        #     k = min(min_k + (1 if self_exclude else 0), Ntrain)
+        #     # distances ignored; we only need indices
+        #     ind_knn = kdt.query(q_xy, k=k, return_distance=False)[0]
+        #     if self_exclude:
+        #         same_lat = torch.isclose(train_coords[ind_knn, 0], q_coord[0], atol=coord_atol).cpu().numpy()
+        #         same_lon = torch.isclose(train_coords[ind_knn, 1], q_coord[1], atol=coord_atol).cpu().numpy()
+        #         mask = ~(same_lat & same_lon)
+        #         ind_knn = ind_knn[mask]
+        #     inds = ind_knn[:min_k] if len(ind_knn) > min_k else ind_knn
 
         # --- slice train data ---
-        torch_inds = torch.as_tensor(inds, dtype=torch.long)
-        obs_coords = train_coords[torch_inds]
-        obs_y      = train_y[torch_inds]
+        # torch_inds = torch.as_tensor(inds, dtype=torch.long)
+        # obs_coords = train_coords[torch_inds]
+        # obs_y      = train_y[torch_inds]
 
-         # --- optionally cap to max_obs by closest neighbors (kNN over the current set) ---
+        # --- optionally cap to max_obs by closest neighbors (kNN over the current set) ---
         # if (max_obs is not None) and (obs_coords.shape[0] > max_obs):
         #     # Get distances for these neighbors and keep the nearest max_obs
         #     # Fast way: query k = len(inds) and match; or compute directly in km-space
@@ -667,7 +728,7 @@ def parse_keep_n_dict(s: str) -> dict[str, float]:
         out[k] = v
     return out
 
-def set_creation_func(dataset, selected_idx, max_radius_km, trainset=None):
+def set_creation_func(dataset, selected_idx, max_radius_km, trainset=None, neighbors_train_only=True):
     set = SpatialDataset(
         coords=dataset.coords[selected_idx].numpy(),
         features=dataset.features[selected_idx].numpy(),
@@ -685,17 +746,26 @@ def set_creation_func(dataset, selected_idx, max_radius_km, trainset=None):
         set.lat_std = train_lat_std
         set.lon_std = train_lon_std
 
-        # add_transformer_masks(set, set.coords, set.y, set.y_mean, set.y_std,
-        #               max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
         faster_add_transformer_masks(set, set.coords, set.y, set.y_mean, set.y_std,
                        max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
     else:
-
-        # add_transformer_masks(set, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
-        #               max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
-        faster_add_transformer_masks(set, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
-                      max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
-    
+        if(neighbors_train_only == False):
+             # --- optionally limit to a percentage of extra points ---
+            use_ratio = getattr(trainset, "neighbor_ratio", 1.0)  # default 100%
+            if use_ratio < 1.0:
+                n_extra = int(len(set.coords) * use_ratio)
+                sel_extra = torch.randperm(len(set.coords))[:n_extra]
+                coords = torch.concat((trainset.coords, set.coords[sel_extra]), dim=0)
+                y = torch.concat((trainset.y, set.y[sel_extra]), dim=0)
+            else:
+                coords = torch.concat((trainset.coords, set.coords), dim=0)
+                y = torch.concat((trainset.y, set.y), dim=0)
+            faster_add_transformer_masks(set, coords, y, trainset.y_mean, trainset.y_std,
+                          max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
+        else:
+            faster_add_transformer_masks(set, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
+                        max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
+        
 
     return set
 
@@ -708,11 +778,11 @@ def load_multi_dt2_data(args):
     -------
     trainset, validset, testset, calibset : SpatialDataset objects
     """
- # 1. Setup File Paths and Cache Key
+    # 1. Setup File Paths and Cache Key
     t0 = time.perf_counter()  # start as early as possible
     os.makedirs("Transformer_Map_Interp/cache/", exist_ok=True)
     # The cache key now depends on the names of all input files, not just one base file.
-    file_list = [args.train_file, args.valid_file, args.test_file, args.calib_file]
+    file_list = [args.train_file, args.valid_file, args.test_file]#, args.calib_file]
     cache_base = "_".join([os.path.basename(f).split('.')[0] for f in file_list])
     cache_key = f"{cache_base}_keep_n{args.keep_n}_seed{args.random_seed}"
 
@@ -721,7 +791,7 @@ def load_multi_dt2_data(args):
         "train": os.path.join(args.data_path, args.train_file),
         "valid": os.path.join(args.data_path, args.valid_file),
         "test": os.path.join(args.data_path, args.test_file),
-        "calib": os.path.join(args.data_path, args.calib_file),
+        #"calib": os.path.join(args.data_path, args.calib_file),
     }
 
     # Verify all input files exist
@@ -740,8 +810,8 @@ def load_multi_dt2_data(args):
         trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt", weights_only=False)
         validset = torch.load(f"Transformer_Map_Interp/cache/validset_{cache_key}.pt", weights_only=False)
         testset  = torch.load(f"Transformer_Map_Interp/cache/testset_{cache_key}.pt",  weights_only=False)
-        calibset = torch.load(f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt", weights_only=False)
-        return trainset, validset, testset, calibset
+        # calibset = torch.load(f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt", weights_only=False)
+        return trainset, validset, testset #, calibset
 
     print("Creating and caching sets...")
     
@@ -775,13 +845,13 @@ def load_multi_dt2_data(args):
             final_sets[name] = set_creation_func(dataset, selected_idx, args.max_km)
         else:
             print(f"Creating {name} set...")
-            final_sets[name] = set_creation_func(dataset, selected_idx, args.max_km, final_sets['train'])
+            final_sets[name] = set_creation_func(dataset, selected_idx, args.max_km, final_sets['train'], neighbors_train_only=args.neighbors_train_only)
         print(f"Num {name}: {total} total, {keep_n} kept ({args.keep_n*100:.1f}%)")
 
     trainset = final_sets['train']
     validset = final_sets['valid']
     testset = final_sets['test']
-    calibset = final_sets['calib']
+    #calibset = final_sets['calib']
 
      # ------- Inspect & Cache -------
     inspect_dataset(trainset, name="Train")
@@ -801,6 +871,6 @@ def load_multi_dt2_data(args):
     torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt")
     torch.save(validset, f"Transformer_Map_Interp/cache/validset_{cache_key}.pt")
     torch.save(testset,  f"Transformer_Map_Interp/cache/testset_{cache_key}.pt")
-    torch.save(calibset, f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
+    #torch.save(calibset, f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
     print (f"build Kdtree Lap: {time.perf_counter() - t0:.3f}s")
-    return trainset, validset, testset, calibset
+    return trainset, validset, testset#, calibset
