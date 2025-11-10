@@ -18,7 +18,7 @@ class TransformerCLSRegressor(nn.Module):
         nhead: int = 8,
         num_layers: int = 4,
         dim_feedforward: int = 256,
-        dropout: float = 0.1,
+        dropout: float = 0.0,
         #cls_init: str = "xavier",  # one of: 'xavier', 'zero', 'normal'
         use_posenc: bool = False,
     ):

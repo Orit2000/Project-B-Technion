@@ -51,10 +51,10 @@ def parse_opt():
     #parser.add_argument('--num_hops', type=int, default=3, help='Number of hops to include in the graph.')
 
     # SetFormer options
-    parser.add_argument('--d_model', type=int, default=256)
-    parser.add_argument('--n_layers', type=int, default=4)
-    parser.add_argument('--n_heads', type=int, default=4)
-    parser.add_argument('--dropout', type=float, default=0.1)
+    parser.add_argument('--d_model', type=int, default=256) # from 256 to 64
+    parser.add_argument('--n_layers', type=int, default=8) # stayed 
+    parser.add_argument('--n_heads', type=int, default=4) # stayed 
+    parser.add_argument('--dropout', type=float, default=0.0)
     #parser.add_argument('--sf_use_distance_bias', action='store_true')
     #parser.add_argument('--sf_rbf_centers', type=int, default=16)
     #parser.add_argument('--sf_rbf_gamma', type=float, default=10.0)
@@ -63,7 +63,7 @@ def parse_opt():
     #parser.add_argument('--sf_use_obs_y_as_feature', type=bool, default=True)
     parser.add_argument('--use_posenc', type=bool, default=False)
     #parser.add_argument('--cls_init', type=str, default='xavier', choices=['xavier', 'zero', 'normal'])
-    parser.add_argument('--ffn_dim', type=int, default=256)
+    parser.add_argument('--ffn_dim', type=int, default=256) # from 256 to 128
     parser.add_argument(
     "--neighbor_ratio",
     type=float,

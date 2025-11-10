@@ -2,7 +2,7 @@ from typing import Tuple, Dict, Any
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
+from transformers import get_cosine_schedule_with_warmup
 from Transformer_Map_Interp.datasets.transformerRegressorDataClass import (
     TransformerPointDataset, collate_point_batches
 )
@@ -117,8 +117,15 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
     # ---------------------------
     loss_fn = torch.nn.MSELoss(reduction="mean")
     optim = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    num_training_steps = len(train_loader) * args.epochs
+    num_warmup_steps = int(0.05 * num_training_steps)
 
-    # y stats for de-normalization
+    scheduler = get_cosine_schedule_with_warmup(
+        optim,
+        num_warmup_steps=num_warmup_steps,
+        num_training_steps=num_training_steps,
+    )
+        # y stats for de-normalization
     y_std = ds_train.y_std if isinstance(ds_train.y_std, torch.Tensor) else torch.tensor(ds_train.y_std or 1.0)
     y_mean = ds_train.y_mean if isinstance(ds_train.y_mean, torch.Tensor) else torch.tensor(ds_train.y_mean or 0.0)
     y_std = y_std.to(dev)
@@ -142,12 +149,13 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
         n_train = 0 
         for mem, mask, y, _ in tqdm(train_loader, desc=f"[Epoch {epoch}] train"): #mem_tokens, pad_mask, y, cls_coords
             mem, mask, y = mem.to(dev), mask.to(dev), y.to(dev)
+            optim.zero_grad()
             #debug_shape("train", mem)
             y_hat = model(mem, mask)
             loss = loss_fn(y_hat, y)
-            optim.zero_grad()
             loss.backward()
             optim.step()
+            scheduler.step()
             train_loss_acc += loss.item() * y.size(0)
             n_train += y.size(0)
         train_loss_norm = train_loss_acc / max(n_train, 1)

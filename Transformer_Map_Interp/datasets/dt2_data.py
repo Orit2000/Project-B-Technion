@@ -320,7 +320,7 @@ def add_transformer_masks(
         
     if isinstance(dataset.query_y, list):
         dataset.query_y = torch.stack(
-            [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y_norm], dim=0
+            [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y], dim=0
         ).squeeze(-1)
         
     # if isinstance(dataset.obs_y_norm, list):

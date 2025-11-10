@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # ====== EDIT IF NEEDED ======
-CSV  = "saved_models/kcn_n32_e035_1arc_v3_cropped/metrics.csv"     # path to your metrics CSV
+CSV  = "saved_models/Exp_5/metrics.csv"     # path to your metrics CSV
 SAVE = True             # True = save PNGs, False = show() interactively
 OUT  = "metrics_plots"   # folder for saved figures if SAVE=True
 # ============================
