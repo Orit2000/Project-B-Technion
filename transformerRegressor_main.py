@@ -17,13 +17,13 @@ if __name__ == "__main__":
     # args.nhead = 8
     # args.num_layers = 4
     # args.ffn_dim = 256
-    args.dropout = 0.0
+    args.dropout = 0.2
     #the largs.weight_decay = 0.0
     # args.cls_init = "xavier"
     # args.use_posenc = False
     # args.batch_size = 64
     args.max_km = 0.75
-    args.epochs = 30
+    args.epochs = 50
     args.new_spread = False
     
     np.random.seed(args.random_seed)

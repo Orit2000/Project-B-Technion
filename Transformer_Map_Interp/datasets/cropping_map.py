@@ -97,7 +97,7 @@ with rasterio.open(dt2_file) as src:
     transform = src.window_transform(window)
 
 # ------------------- Saving cropped ---------------------
-output_path = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_test.tiff"
+output_path = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_test_new_version.tiff"
 with rasterio.open(dt2_file) as src:
     window = from_bounds(min_lon, min_lat, max_lon, max_lat, src.transform)
     cropped = src.read(1, window=window)

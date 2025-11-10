@@ -13,7 +13,7 @@ def degrees_to_meters(degree_res, latitude):
     return lat_res_m, lon_res_m 
 
 # Load the DTED file
-dt2_file = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_test_.tiff"
+dt2_file = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_test_new_version.tiff"
 
 with rasterio.open(dt2_file) as dataset:
     elevation = dataset.read(1)  # Read the first band (elevation values)
@@ -27,7 +27,8 @@ with rasterio.open(dt2_file) as dataset:
 
     # Convert resolution to meters
     lat_res_m, lon_res_m = degrees_to_meters(degree_res_x, mid_latitude)
-    
+vmin = np.min(elevation)   # or set a fixed value, e.g. -300
+vmax = np.max(elevation)   # or set a fixed value, e.g. 1300    
 
 # Prints
 print(f"Resolution in Degrees: {degree_res_x}° x {degree_res_y}°")
@@ -35,15 +36,25 @@ print(f"Resolution in Meters: {lat_res_m:.2f}m x {lon_res_m:.2f}m")
 print(f"Size: {width} x {height} pixels")
 print(f"Extent: {bounds}")
 
-# Plot the elevation data
-plt.figure(figsize=(10, 8))
-plt.imshow(elevation, cmap="terrain", extent=extent, origin="upper")
+\
+#norm = TwoSlopeNorm(vmin=vmin, vcenter=0.0, vmax=vmax)
+
+plt.figure(figsize=(10,8))
+plt.imshow(elevation, cmap='terrain', extent=extent, origin="upper", vmin=vmin, vmax=vmax)
 plt.colorbar(label="Elevation (m)")
 plt.title("DTED Level 2 Elevation Data")
-plt.xlabel("Longitude")
-plt.ylabel("Latitude")
+plt.xlabel("Longitude"); plt.ylabel("Latitude")
+plt.savefig("Transformer_Map_Interp/datasets/dt2_region.png", dpi=300, bbox_inches="tight")
 plt.show()
-plt.savefig("Transformer_Map_Interp/datasets/dt2_region.png")
+# # Plot the elevation data
+# plt.figure(figsize=(10, 8))
+# plt.imshow(elevation, cmap="terrain", extent=extent, origin="upper")
+# plt.colorbar(label="Elevation (m)")
+# plt.title("DTED Level 2 Elevation Data")
+# plt.xlabel("Longitude")
+# plt.ylabel("Latitude")
+# plt.show()
+# plt.savefig("Transformer_Map_Interp/datasets/dt2_region.png")
 
 # --- Elevation histogram ---
 # Flatten and drop masked (NoData) values

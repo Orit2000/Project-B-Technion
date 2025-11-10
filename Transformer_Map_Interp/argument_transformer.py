@@ -19,7 +19,7 @@ def parse_opt():
     parser.add_argument('--datasampling', type=str, default="uniform", help="The random seed")
     parser.add_argument('--new_spread', type=bool, default="False", help="The random seed")
     parser.add_argument('--random_seed', type=int, default="5", help="The random seed")
-    parser.add_argument('--keep_n', type=float, default="0.001", help="The random seed")
+    parser.add_argument('--keep_n', type=float, default="0.005", help="The random seed")
     parser.add_argument('--normalize_elev', type=bool, default=True, help="The random seed")
     parser.add_argument('--calib_percentage', type=float, default=0.5, help="The random seed")
     #parser.add_argument('--dataset', type=str, default="bird_count", help="The dataset name: currently can only be 'bird_count'")
@@ -83,7 +83,7 @@ def parse_opt():
     parser.add_argument('--valid_file', type=str, default="n32_e035_1arc_v3_cropped_val.tiff")
     parser.add_argument('--test_file', type=str, default="n32_e035_1arc_v3_cropped_test.tiff")
     parser.add_argument('--calib_file', type=str, default="n32_e035_1arc_v3__cropped_test.tiff")
-    parser.add_argument('--keep_n_dict', type=str, default="train:0.05,valid:0.05,test:0.05,calib:0.000001") #Orit - I changes this!! from 0.005 to 0.05
+    parser.add_argument('--keep_n_dict', type=str, default="train:0.005,valid:0.005,test:0.005,calib:0.000001") #Orit - I changes this!! from 0.005 to 0.05
 
     args, unknowns = parser.parse_known_args()
     args.save_path = f"saved_models/{args.model}_{args.dataset}/"
