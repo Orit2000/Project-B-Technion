@@ -1,9 +1,11 @@
 import numpy as np
-import torch
-from transformerRegressor_run_experiment import run_transformer
-from Transformer_Map_Interp.argument_transformer import parse_opt
+import torch, sys, os
+sys.path.append(os.path.abspath("."))  # project root
+print(os.path.abspath("."))
+from Another_Data_Creation_Process.transformerRegressor_run_experiment import run_transformer
+from argument_transformer import parse_opt
 from torch.utils.tensorboard import SummaryWriter
-import os
+
 os.environ["TENSORBOARD_NO_TF"] = "1"      # tell TB to use its 'notf' path
 if __name__ == "__main__":
     
@@ -23,7 +25,7 @@ if __name__ == "__main__":
     # args.use_posenc = False
     # args.batch_size = 64
     args.max_km = 0.75
-    args.epochs = 20
+    args.epochs = 30
     args.new_spread = False
     
     np.random.seed(args.random_seed)

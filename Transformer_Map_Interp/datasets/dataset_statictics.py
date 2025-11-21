@@ -6,7 +6,7 @@ sys.path.append(os.path.abspath("."))  # project root
 from Transformer_Map_Interp.datasets.data import SpatialDataset
 from Transformer_Map_Interp.datasets.transformerRegressorDataClass import TransformerPointDataset
 from Transformer_Map_Interp.datasets.transformerRegressorDataClass import TransformerPointDataset, collate_point_batches
-from Transformer_Map_Interp.datasets.dt2_data import load_multi_dt2_data
+from Transformer_Map_Interp.datasets.dt2_data_orig____ import load_multi_dt2_data
 
 # -------------------------------------------------------------
 # Configuration

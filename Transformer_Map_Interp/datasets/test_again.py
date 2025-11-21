@@ -2,7 +2,7 @@ import torch
 import numpy as np
 import sys, os
 sys.path.append(os.path.abspath("."))  # project root
-from Transformer_Map_Interp.datasets.dt2_data import DT2Dataset, set_creation_func
+from Transformer_Map_Interp.datasets.dt2_data_orig____ import DT2Dataset, set_creation_func
 
 # === CONFIG ===
 dt2_path = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_val.tiff"
@@ -17,7 +17,7 @@ trainset = torch.load(trainset_path, map_location="cpu", weights_only=False)
 print("Loaded trainset successfully!")
 
 # === LOAD NEW TEST TILE ===
-from Transformer_Map_Interp.datasets.dt2_data import DT2Dataset
+from Transformer_Map_Interp.datasets.dt2_data_orig____ import DT2Dataset
 dataset = DT2Dataset(dt2_path, include_elevation_in_features=False)
 total = dataset.coords.shape[0]
 keep_n = int(total * keep_ratio)
@@ -26,7 +26,7 @@ selected_idx = rng.choice(total, size=keep_n, replace=False)
 print(f"Selected {keep_n} / {total} points for test")
 
 # === CREATE NEW TESTSET ===
-from Transformer_Map_Interp.datasets.dt2_data import set_creation_func
+from Transformer_Map_Interp.datasets.dt2_data_orig____ import set_creation_func
 testset = set_creation_func(dataset, selected_idx, max_radius_km, trainset=trainset,neighbors_train_only=False)
 
 # === SAVE ===

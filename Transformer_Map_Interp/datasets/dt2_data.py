@@ -8,6 +8,8 @@ from matplotlib import pyplot as plt
 from scipy.stats import multivariate_normal
 from sklearn.neighbors import KDTree
 import time
+import pandas as pd
+import torch
 
 # =====================================
 # DT2Dataset: reads a single .tiff/.dt2 tile
@@ -175,14 +177,6 @@ def sets_creation_func(dataset, selected_idx_train, selected_idx_val, selected_i
     trainset.lat_std = train_lat_std
     trainset.lon_std = train_lon_std
     print("In sets creation - before faster_add_transformer_masks")
-    # add_transformer_masks(trainset, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
-    #                   max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
-    # add_transformer_masks(validset, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
-    #                     max_radius_km=max_radius_km, self_exclude=False,max_obs=256, min_k=8)
-    # add_transformer_masks(testset, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
-    #                     max_radius_km=max_radius_km, self_exclude=False,max_obs=256, min_k=8)
-    # add_transformer_masks(calibset, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
-    #                     max_radius_km=max_radius_km, self_exclude=False,max_obs=256, min_k=8)
     faster_add_transformer_masks(trainset, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
                        max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
     faster_add_transformer_masks(validset, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
@@ -193,149 +187,138 @@ def sets_creation_func(dataset, selected_idx_train, selected_idx_val, selected_i
                          max_radius_km=max_radius_km, self_exclude=False,max_obs=256, min_k=8)
     return trainset, validset, testset, calibset
 
-def add_transformer_masks(
+def faster_add_transformer_masks_no_batching(
     dataset,
-    train_coords,
-    train_y,
+    nei_coords,
+    nei_y,
     train_y_mean, 
     train_y_std,
     max_radius_km=None,
-    self_exclude=False,
-    max_obs=None,         # cap number of observed tokens (optional)
-    min_k=8,              # fallback K if radius leaves too few neighbors
-    coord_atol=1e-9       # tolerance for coordinate equality
+    self_exclude=True,
+    max_obs=10,             # number of neighbors to keep
+    coord_atol=1e-9
 ):
-    # helpers
-    def haversine_dist(lat1, lon1, lat2, lon2):
-        R = 6371.0
-        dlat = torch.deg2rad(lat2 - lat1)
-        dlon = torch.deg2rad(lon2 - lon1)
-        a = torch.sin(dlat/2)**2 + torch.cos(torch.deg2rad(lat1)) * torch.cos(torch.deg2rad(lat2)) * torch.sin(dlon/2)**2
-        return R * (2 * torch.atan2(torch.sqrt(a), torch.sqrt(1 - a)))
+    import numpy as np
+    import torch
+    from sklearn.neighbors import KDTree
 
-    dataset.obs_coords = []
-    dataset.obs_y = []
-    dataset.query_coords = []
-    dataset.query_y = []
-    dataset.obs_y_norm = []
-    dataset.obs_coords_norm = []
-    dataset.q_y_norm = []
-    #dataset.obs_mask = []
-    #dataset.query_mask = []
+    ###########################################################################
+    # 1) BUILD KDTree in projected (km) coordinate system
+    ###########################################################################
+    with torch.no_grad():
+        lat_deg = nei_coords[:, 0].cpu().double().numpy()
+        lon_deg = nei_coords[:, 1].cpu().double().numpy()
 
-    # ensure tensors
-    train_coords = train_coords.clone()
-    train_y = train_y.clone()
-    dataset.y_norm = (dataset.y - train_y_mean) / train_y_std
-    
-    for i in range(len(dataset)):
+    lat0 = float(np.mean(lat_deg))
+    k_lat = 110.574
+    k_lon = 111.320 * np.cos(np.deg2rad(lat0))
+
+    nei_xy = np.stack([lon_deg * k_lon, lat_deg * k_lat], axis=1)
+
+    print("Building KDTree...")
+    kdt = KDTree(nei_xy, metric='euclidean')
+    print("KDTree built.")
+
+    ###########################################################################
+    # 2) PREPARE padded tensors
+    ###########################################################################
+    N = len(dataset)
+
+    obs_coords_tensor      = torch.zeros((N, max_obs, 2), dtype=torch.float32)
+    obs_y_tensor           = torch.zeros((N, max_obs), dtype=torch.float32)
+    obs_coords_norm_tensor = torch.zeros((N, max_obs, 2), dtype=torch.float32)
+    obs_y_norm_tensor      = torch.zeros((N, max_obs), dtype=torch.float32)
+
+    mask_tensor = torch.zeros((N, max_obs), dtype=torch.bool)
+    q_coords_tensor  = torch.zeros((N, 2), dtype=torch.float32)
+    q_y_tensor       = torch.zeros((N,), dtype=torch.float32)
+    q_y_norm_tensor  = torch.zeros((N,), dtype=torch.float32)
+
+    ###########################################################################
+    # 3) PREPARE query coordinates (for global radius query)
+    ###########################################################################
+    q_coords = dataset.coords.cpu().double().numpy()
+    q_xy = np.stack([q_coords[:,1] * k_lon, q_coords[:,0] * k_lat], axis=1)
+
+    ###########################################################################
+    # 4) SINGLE GIANT radius-query (NOT batched)
+    #    ❗ Warning: OOM for millions of points
+    ###########################################################################
+    print("Performing FULL radius query (no batching)...")
+    inds_list, dists_list = kdt.query_radius(
+        q_xy,
+        r=max_radius_km,
+        return_distance=True
+    )
+    print("Full radius query done.")
+
+    ###########################################################################
+    # 5) LOOP — Fill padded tensors
+    ###########################################################################
+    for i in range(N):
         q_coord = dataset.coords[i]
-        q_y = dataset.y[i]
+        q_y     = dataset.y[i]
 
-        # start with all train points
-        if max_radius_km is not None:
-            dists = haversine_dist(q_coord[0], q_coord[1], train_coords[:, 0], train_coords[:, 1])
-            keep = dists <= max_radius_km
-        else:
-            keep = torch.ones(train_coords.shape[0], dtype=torch.bool)
+        inds  = inds_list[i]
+        dists = dists_list[i]
 
-        # exclude the query point itself (only for train set)
+        # Self exclude
         if self_exclude:
-            same_lat = torch.isclose(train_coords[:, 0], q_coord[0], atol=coord_atol)
-            same_lon = torch.isclose(train_coords[:, 1], q_coord[1], atol=coord_atol)
-            keep = keep & ~(same_lat & same_lon)
+            mask = dists > 1e-6
+            inds  = inds[mask]
+            dists = dists[mask]
 
-        # if nothing (or too few) remains, fall back to nearest min_k neighbors
-        if keep.sum().item() < min_k:
-            # compute distances once (if we didn't already)
-            if max_radius_km is None:
-                dists = haversine_dist(q_coord[0], q_coord[1], train_coords[:, 0], train_coords[:, 1])
-            # exclude self from fallback set as well
-            if self_exclude:
-                dists[same_lat & same_lon] = float('inf')
-            k = min(min_k, (train_coords.shape[0] - (1 if self_exclude else 0)))
-            topk = torch.topk(-dists, k).indices  # negative -> smallest distance
-            keep = torch.zeros_like(keep); keep[topk] = True
+        # Cap to max_obs nearest neighbors
+        if len(inds) > max_obs:
+            order = np.argsort(dists)[:max_obs]
+            inds  = inds[order]
+            dists = dists[order]
 
-        obs_coords = train_coords[keep]
-        obs_y = train_y[keep]
+        # Slice neighbor data
+        if len(inds) > 0:
+            tinds = torch.as_tensor(inds, dtype=torch.long)
+            obs_coords = nei_coords[tinds]
+            obs_y      = nei_y[tinds]
 
-        # optionally cap max observed tokens (helps memory)
-        if max_obs is not None and obs_coords.shape[0] > max_obs:
-            # choose closest max_obs
-            dists = haversine_dist(q_coord[0], q_coord[1], obs_coords[:, 0], obs_coords[:, 1])
-            sel = torch.topk(-dists, max_obs).indices
-            obs_coords = obs_coords[sel]
-            obs_y = obs_y[sel]
+            # (num,1) → (num,)
+            if obs_y.ndim == 2 and obs_y.shape[1] == 1:
+                obs_y = obs_y.squeeze(-1)
 
-        # build masks
-        #L = obs_coords.shape[0] + 1  # +1 for CLS token
-        #obs_mask = torch.zeros(L, dtype=torch.bool); obs_mask[:L-1] = True
-        #query_mask = torch.zeros(L, dtype=torch.bool); query_mask[-1] = True
+            num = len(inds)
 
-        # Normalized
-        obs_coords_norm = obs_coords - q_coord
-        obs_y_norm = (obs_y - train_y_mean) / train_y_std
-        q_y_norm = (q_y - train_y_mean) / train_y_std
+            # Neighbors
+            obs_coords_tensor[i, :num] = obs_coords
+            obs_y_tensor[i, :num]      = obs_y
+            mask_tensor[i, :num]       = True
 
-        # --- enforce consistent shapes ---
-        # neighbors: (S,) not (S,1)
-        if obs_y.ndim == 2 and obs_y.size(-1) == 1:
-            obs_y = obs_y.squeeze(-1)
-        if obs_y_norm.ndim == 2 and obs_y_norm.size(-1) == 1:
-            obs_y_norm = obs_y_norm.squeeze(-1)
+            # Normalized neighbors
+            obs_coords_norm_tensor[i, :num] = obs_coords - q_coord
+            obs_y_norm_tensor[i, :num]      = (obs_y - train_y_mean) / train_y_std
 
-        # query y: scalar ()
-        q_y = q_y.squeeze()
-        q_y_norm = q_y_norm.squeeze()
-        
-        dataset.obs_coords.append(obs_coords)
-        dataset.obs_y.append(obs_y)
-        dataset.query_coords.append(q_coord)
-        dataset.query_y.append(q_y)
-        dataset.obs_coords_norm.append(obs_coords_norm)
-        dataset.obs_y_norm.append(obs_y_norm)
-        dataset.q_y_norm.append(q_y_norm)
+        # Query point
+        q_coords_tensor[i] = q_coord
+        q_y_tensor[i]      = q_y
+        q_y_norm_tensor[i] = (q_y - train_y_mean) / train_y_std
 
-    # --- finalize per-target tensors (uniform length N) ---
-    if isinstance(dataset.query_coords, list):
-        dataset.query_coords = torch.stack(
-            [torch.as_tensor(x, dtype=torch.float32) for x in dataset.query_coords], dim=0
-        )  # (N, 2)
-        
-    # if isinstance(dataset.obs_coords_norm, list):
-    #     dataset.obs_coords_norm = torch.stack(
-    #         [torch.as_tensor(x, dtype=torch.float32) for x in dataset.query_coords], dim=0
-    #     )  # (N, 2)
-    
-    # if isinstance(dataset.obs_coords, list):
-    #     dataset.obs_coords = torch.stack(
-    #         [torch.as_tensor(x, dtype=torch.float32) for x in dataset.query_coords], dim=0
-    #     )  # (N, 2)
+        if i % 50000 == 0:
+            print(f"Processed {i}/{N} points")
 
-    if isinstance(dataset.q_y_norm, list):
-        dataset.q_y_norm = torch.stack(
-            [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y_norm], dim=0
-        ).squeeze(-1)  # (N,)
-        
-    if isinstance(dataset.query_y, list):
-        dataset.query_y = torch.stack(
-            [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y], dim=0
-        ).squeeze(-1)
-        
-    # if isinstance(dataset.obs_y_norm, list):
-    #     dataset.obs_y_norm = torch.stack(
-    #         [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y_norm], dim=0
-    #     ).squeeze(-1)
-            
-    # if isinstance(dataset.obs_y, list):
-    #     dataset.obs_y = torch.stack(
-    #         [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y_norm], dim=0
-    #     ).squeeze(-1)   
-    
-    
-        #dataset.obs_mask.append(obs_mask[:L-1])  # keep mask per observed only if you prefer
-        #dataset.query_mask.append(query_mask)
+    ###########################################################################
+    # 6) Attach padded tensors to dataset
+    ###########################################################################
+    dataset.obs_coords      = obs_coords_tensor
+    dataset.obs_y           = obs_y_tensor
+    dataset.obs_coords_norm = obs_coords_norm_tensor
+    dataset.obs_y_norm      = obs_y_norm_tensor
+    dataset.obs_mask        = mask_tensor
+    dataset.query_coords    = q_coords_tensor
+    dataset.query_y         = q_y_tensor
+    dataset.q_y_norm        = q_y_norm_tensor
+
+    print("Done (non-batched version).")
+    return dataset
+
+
 def faster_add_transformer_masks(
     dataset,
     nei_coords,
@@ -348,210 +331,136 @@ def faster_add_transformer_masks(
     min_k=8,              # fallback K if radius leaves too few neighbors
     coord_atol=1e-9       # tolerance for coordinate equality
 ):
-    # ---- 0) Build a single KDTree on TRAIN coords in a planar (km) space ----
-    # Equirectangular projection with fixed reference latitude:
-    #   x_km = (lon_deg) * (111.320 * cos(lat0_deg))
-    #   y_km = (lat_deg) * 110.574
+
+    ###########################################################################
+    # 1) BUILD KDTree in projected (km) coordinate system
+    ###########################################################################
     with torch.no_grad():
-        nei_lat_deg = nei_coords[:, 0].cpu().double().numpy()
-        nei_lon_deg = nei_coords[:, 1].cpu().double().numpy()
-    lat0 = float(np.mean(nei_lat_deg))
-    k_lat = 110.574                # km per 1 degree latitude
-    k_lon = 111.320 * np.cos(np.deg2rad(lat0))  # km per 1 degree longitude at lat0
+        nei_lat = nei_coords[:, 0].cpu().double().numpy()
+        nei_lon = nei_coords[:, 1].cpu().double().numpy()
 
-    nei_xy_km = np.stack([nei_lon_deg * k_lon, nei_lat_deg * k_lat], axis=1)
-    # if(neighbors_train_only == True and set=='train'):
-    print("Building KDTree on neighbor coords...")
-    kdt = KDTree(nei_xy_km, metric='euclidean')
-       
-    # else:
-    #     //take using percentage_from_target points out of the target set
-    #     // concat with the trainging data
-    #     kdt = KDTree(train_plus_target_xy_km, metric='euclidean')
-        
-    dataset.obs_coords = []
-    dataset.obs_y = []
-    dataset.query_coords = []
-    dataset.query_y = []
-    dataset.obs_y_norm = []
-    dataset.obs_coords_norm = []
-    dataset.q_y_norm = []
-    #dataset.obs_mask = []
-    #dataset.query_mask = []
+    lat0 = float(np.mean(nei_lat))
+    k_lat = 110.574
+    k_lon = 111.320 * np.cos(np.deg2rad(lat0))
 
-    # ensure tensors
-    #train_coords = train_coords.clone()
-    #train_y = train_y.clone()
-    dataset.y_norm = (dataset.y - train_y_mean) / train_y_std
-    N_nei = nei_coords.shape[0]
+    nei_xy = np.stack([nei_lon * k_lon, nei_lat * k_lat], axis=1)
 
-    # The NEWER, FASTER APPROACH: single KDTree query per target point
-    # Inside faster_add_transformer_masks, before the loop
-    q_coords_all = dataset.coords.cpu().double().numpy()
-    q_lat_all = q_coords_all[:, 0]
-    q_lon_all = q_coords_all[:, 1]
+    print("Building KDTree...")
+    kdt = KDTree(nei_xy, metric='euclidean')
+    print("KDTree built.")
 
-    # This is your k_lat and k_lon from the train_coords
-    q_xy_all = np.stack([q_lon_all * k_lon, q_lat_all * k_lat], axis=1)
-    
-    # Query all points at once for radius
-    if max_radius_km is not None:
-        # This returns a list of arrays, one array of indices per query point
-        print("Starting batch radius query...")
-        all_inds_list = kdt.query_radius(q_xy_all, r=max_radius_km, return_distance=False)
-        print(f"Number of neighbors per query (first 10): {[len(inds) for inds in all_inds_list[:10]]}")
-    else:
-        # Fallback: just return indices for all N_train points for each query
-        all_inds_list = [np.arange(N_nei) for _ in range(len(q_xy_all))]
+    ###########################################################################
+    # 2) PREPARE padded tensors
+    ###########################################################################
+    N = len(dataset)
 
-    # Run a separate batch query for the min_k fallback (if needed)
-    # This returns one big array (N_queries, k)
-    # all_inds_knn = kdt.query(q_xy_all, k=min(min_k + 1, Ntrain), return_distance=False)
-    
-    # Now loop through the *results*
-    for i in range(len(dataset)):
-        q_coord = dataset.coords[i]
-        q_y = dataset.y[i]
+    obs_coords_tensor = torch.zeros((N, max_obs, 2), dtype=torch.float32)
+    obs_y_tensor      = torch.zeros((N, max_obs), dtype=torch.float32)
+    obs_coords_norm_tensor = torch.zeros((N, max_obs, 2), dtype=torch.float32)
+    obs_y_norm_tensor      = torch.zeros((N, max_obs), dtype=torch.float32)
 
-        inds = all_inds_list[i] # Get the pre-computed indices
+    #mask_tensor      = torch.zeros((N, max_obs), dtype=torch.bool)
+    q_coords_tensor  = torch.zeros((N, 2), dtype=torch.float32)
+    q_y_tensor       = torch.zeros((N,), dtype=torch.float32)
+    q_y_norm_tensor  = torch.zeros((N,), dtype=torch.float32)
 
-        # --- self-exclude logic (can also be vectorized) ---
-        if self_exclude:
-            same_lat = torch.isclose(nei_coords[:, 0], q_coord[0], atol=coord_atol).cpu().numpy()
-            same_lon = torch.isclose(nei_coords[:, 1], q_coord[1], atol=coord_atol).cpu().numpy()
-            same_pt_mask = same_lat & same_lon
-            if inds.size == N_nei:
-                inds = np.where(~same_pt_mask)[0]
-            else:
-                inds = inds[~same_pt_mask[inds]]
+    ###########################################################################
+    # 3) PREPARE query coordinates
+    ###########################################################################
+    q_coords = dataset.coords.cpu().double().numpy()
+    q_lat = q_coords[:, 0]
+    q_lon = q_coords[:, 1]
 
-        # # --- ensure at least min_k via kNN fallback ---
-        # if (inds is None) or (len(inds) < min_k):
-        #     ind_knn = all_inds_knn[i]
-        #     # ... (your logic to process ind_knn) ...
-        #     inds = ind_knn[:min_k] 
+    q_xy_all = np.stack([q_lon * k_lon, q_lat * k_lat], axis=1)
 
-        # --- slice neighbor data ---
-        torch_inds = torch.as_tensor(inds, dtype=torch.long)
-        obs_coords = nei_coords[torch_inds]
-        obs_y = nei_y[torch_inds]
+    ###########################################################################
+    # 4) BATCHED radius-query
+    ###########################################################################
+    batch_size = 10000
+    num_batches = (N + batch_size - 1) // batch_size
 
-    # ... (rest of your normalization and appending logic) ...
-    
-    # The unoptimized way: loop over target points
-    # for i in range(len(dataset)):
-    #     q_coord = dataset.coords[i]
-    #     q_y = dataset.y[i]
+    print("Starting batched KDTree radius queries...")
 
-    #     q_lat = float(q_coord[0].item())
-    #     q_lon = float(q_coord[1].item())
-    #     q_xy  = np.array([[q_lon * k_lon, q_lat * k_lat]], dtype=float)
-    #     ## --- 1) radius neighbors if specified ---
-    #     if max_radius_km is not None:
-    #         inds = kdt.query_radius(q_xy, r=max_radius_km, return_distance=False)[0]
-    #         if (i%1000 == 0):
-    #             print(f"Number of neighbors:{len(inds)}")
-    #     else:
-    #         # consider all points if no radius constraint
-    #         inds = np.arange(Ntrain)
+    for b in range(num_batches):
+        start = b * batch_size
+        end   = min(start + batch_size, N)
 
-        # # --- self-exclude (exact coord match in degrees) ---
-        # if self_exclude:
-        #     same_lat = torch.isclose(train_coords[:, 0], q_coord[0], atol=coord_atol).cpu().numpy()
-        #     same_lon = torch.isclose(train_coords[:, 1], q_coord[1], atol=coord_atol).cpu().numpy()
-        #     same_pt_mask = same_lat & same_lon
-        #     if inds.size == Ntrain:
-        #         inds = np.where(~same_pt_mask)[0]
-        #     else:
-        #         inds = inds[~same_pt_mask[inds]]
+        batch_xy = q_xy_all[start:end]
 
-        # # --- 2) ensure at least min_k via kNN fallback ---
-        # if (inds is None) or (len(inds) < min_k):
-        #     print("second query")
-        #     k = min(min_k + (1 if self_exclude else 0), Ntrain)
-        #     # distances ignored; we only need indices
-        #     ind_knn = kdt.query(q_xy, k=k, return_distance=False)[0]
-        #     if self_exclude:
-        #         same_lat = torch.isclose(train_coords[ind_knn, 0], q_coord[0], atol=coord_atol).cpu().numpy()
-        #         same_lon = torch.isclose(train_coords[ind_knn, 1], q_coord[1], atol=coord_atol).cpu().numpy()
-        #         mask = ~(same_lat & same_lon)
-        #         ind_knn = ind_knn[mask]
-        #     inds = ind_knn[:min_k] if len(ind_knn) > min_k else ind_knn
+        # Perform radius query for this batch
+        inds_batch, dists_batch = kdt.query_radius(
+            batch_xy,
+            r=max_radius_km,
+            return_distance=True
+        )
 
-        # --- slice train data ---
-        # torch_inds = torch.as_tensor(inds, dtype=torch.long)
-        # obs_coords = train_coords[torch_inds]
-        # obs_y      = train_y[torch_inds]
+        #######################################################################
+        # Process each point in batch
+        #######################################################################
+        for j, (inds, dists) in enumerate(zip(inds_batch, dists_batch)):
+            i = start + j  # real index in dataset
 
-        # --- optionally cap to max_obs by closest neighbors (kNN over the current set) ---
-        # if (max_obs is not None) and (obs_coords.shape[0] > max_obs):
-        #     # Get distances for these neighbors and keep the nearest max_obs
-        #     # Fast way: query k = len(inds) and match; or compute directly in km-space
-        #     sub_xy = np.stack(
-        #         [obs_coords[:, 1].cpu().double().numpy() * k_lon,
-        #          obs_coords[:, 0].cpu().double().numpy() * k_lat],
-        #         axis=1
-        #     )
-        #     d2 = np.sum((sub_xy - q_xy[0])**2, axis=1)  # squared euclidean
-        #     order = np.argsort(d2)[:max_obs]
-        #     torch_inds = torch_inds[torch.as_tensor(order, dtype=torch.long)]
-        #     obs_coords = train_coords[torch_inds]
-        #     obs_y      = train_y[torch_inds]
+            q_coord = dataset.coords[i]
+            q_y     = dataset.y[i]
 
-        # Normalized
-        obs_coords_norm = obs_coords - q_coord
-        obs_y_norm = (obs_y - train_y_mean) / train_y_std
-        q_y_norm = (q_y - train_y_mean) / train_y_std
+            # Store query
+            q_coords_tensor[i] = q_coord
+            q_y_tensor[i]      = q_y
+            q_y_norm_tensor[i] = (q_y - train_y_mean) / train_y_std
 
-        # --- enforce consistent shapes ---
-        # ensure shapes (keep your existing squeeze logic)
-        if obs_y.ndim == 2 and obs_y.size(-1) == 1:
-            obs_y = obs_y.squeeze(-1)
-        if obs_y_norm.ndim == 2 and obs_y_norm.size(-1) == 1:
-            obs_y_norm = obs_y_norm.squeeze(-1)
-        q_y = q_y.squeeze()
-        q_y_norm = q_y_norm.squeeze()
+            # FAST self-exclude (if needed)
+            if self_exclude:
+                mask_dx = dists > 1e-6
+                inds  = inds[mask_dx]
+                dists = dists[mask_dx]
 
-        # append to your ragged lists
-        dataset.obs_coords.append(obs_coords)
-        dataset.obs_y.append(obs_y)
-        dataset.query_coords.append(q_coord)
-        dataset.query_y.append(q_y)
-        dataset.obs_coords_norm.append(obs_coords_norm)
-        dataset.obs_y_norm.append(obs_y_norm)
-        dataset.q_y_norm.append(q_y_norm)
+            # Cap to max_obs nearest neighbors
+            # if len(inds) > max_obs:
+            #     order = np.argsort(dists)[:max_obs]
+            #     inds  = inds[order]
+            #     dists = dists[order]
+                    # Random
+            if len(inds) > 10:
+                inds = np.random.choice(inds, size=10, replace=False)
 
-    # --- finalize per-target tensors (uniform length N) ---
-    if isinstance(dataset.query_coords, list):
-        dataset.query_coords = torch.stack(
-            [torch.as_tensor(x, dtype=torch.float32) for x in dataset.query_coords], dim=0
-        )  # (N, 2)
-        
-    # if isinstance(dataset.obs_coords_norm, list):
-    #     dataset.obs_coords_norm = torch.stack(
-    #         [torch.as_tensor(x, dtype=torch.float32) for x in dataset.query_coords], dim=0
-    #     )  # (N, 2)
-    
-    # if isinstance(dataset.obs_coords, list):
-    #     dataset.obs_coords = torch.stack(
-    #         [torch.as_tensor(x, dtype=torch.float32) for x in dataset.query_coords], dim=0
-    #     )  # (N, 2)
+            # Convert to tensor
+            if len(inds) > 0:
+                tinds = torch.as_tensor(inds, dtype=torch.long)
+                obs_coords = nei_coords[tinds]
+                obs_y      = nei_y[tinds]
 
-    if isinstance(dataset.q_y_norm, list):
-        dataset.q_y_norm = torch.stack(
-            [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y_norm], dim=0
-        ).squeeze(-1)  # (N,)
-        
-    if isinstance(dataset.query_y, list):
-        dataset.query_y = torch.stack(
-            [torch.as_tensor(x, dtype=torch.float32).reshape(1) for x in dataset.q_y_norm], dim=0
-        ).squeeze(-1)
-        
-import os
-import numpy as np
-import pandas as pd
-import torch
+                # FIX: squeeze (num,1) -> (num,)
+                if obs_y.ndim == 2 and obs_y.shape[1] == 1:
+                    obs_y = obs_y.squeeze(-1)
 
+                num = len(inds)
+
+                # Store padded neighbors
+                obs_coords_tensor[i, :num] = obs_coords
+                obs_y_tensor[i, :num]      = obs_y
+
+                #mask_tensor[i, :num] = True
+
+                # Normalized versions
+                obs_coords_norm_tensor[i, :num] = obs_coords - q_coord
+                obs_y_norm_tensor[i, :num] = (obs_y - train_y_mean) / train_y_std
+
+        print(f"Processed batch {b+1}/{num_batches}  ({end}/{N})")
+
+    ###########################################################################
+    # 5) ATTACH to dataset (replacing old list-based fields)
+    ###########################################################################
+    dataset.obs_coords      = obs_coords_tensor
+    dataset.obs_y           = obs_y_tensor
+    dataset.obs_coords_norm = obs_coords_norm_tensor
+    dataset.obs_y_norm      = obs_y_norm_tensor
+    #dataset.obs_mask        = mask_tensor
+
+    dataset.query_coords    = q_coords_tensor
+    dataset.query_y         = q_y_tensor
+    dataset.q_y_norm        = q_y_norm_tensor
+
+    return dataset
 def _to1d(x):
     if x is None: return np.array([])
     if isinstance(x, torch.Tensor): x = x.detach().cpu().numpy()
@@ -581,131 +490,6 @@ def save_y_series(sets_y: dict, csv_path: str):
 # Main loader with 4-way split (train/valid/test/calib)
 # =====================================
 
-def load_dt2_data(args):
-    """
-    Load data for training, validation, test, and calibration from a DTED file.
-
-    Returns
-    -------
-    trainset, validset, testset, calibset : SpatialDataset objects
-    """
-    # file path
-    os.makedirs("Transformer_Map_Interp/cache/", exist_ok=True)
-    cache_key = f"{args.dataset}_keep_n{args.keep_n}"
-    dt2_file = os.path.join(args.data_path, args.dataset + ".tiff")
-    print(f"[DEBUG] Using dt2_file path: {dt2_file}")
-    assert os.path.isfile(dt2_file), f"File does not exist: {dt2_file}"
-
-    cache_exists = (
-        os.path.exists(f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt") and
-        os.path.exists(f"Transformer_Map_Interp/cache/validset_{cache_key}.pt") and
-        os.path.exists(f"Transformer_Map_Interp/cache/testset_{cache_key}.pt") and
-        os.path.exists(f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
-    )
-
-    if cache_exists and (args.new_spread == False):
-        print("Loading cached sets...")
-        trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt", weights_only=False)
-        validset = torch.load(f"Transformer_Map_Interp/cache/validset_{cache_key}.pt", weights_only=False)
-        testset  = torch.load(f"Transformer_Map_Interp/cache/testset_{cache_key}.pt",  weights_only=False)
-        calibset = torch.load(f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt", weights_only=False)
-        return trainset, validset, testset, calibset
-
-    print("Creating and caching sets...")
-    dataset = DT2Dataset(dt2_file=dt2_file, include_elevation_in_features=False, normalize=getattr(args, 'normalize_elev', False))
-    print("dataset exists!")
-
-    # ------- Resample point subset (deterministic) -------
-    total = dataset.coords.shape[0]
-    keep_n = int(total * args.keep_n)
-    rng = np.random.RandomState(seed=args.random_seed)
-    selected_idx = rng.choice(total, size=keep_n, replace=False) if args.datasampling == 'uniform' else None
-
-    num_total_dataset = keep_n
-    # use the SAME ratio for val/test/calib, as in your code
-    num_valid = int(args.validation_size * num_total_dataset)
-    num_calib = int(args.validation_size * num_total_dataset)
-    num_test  = int(args.validation_size * num_total_dataset)
-    num_train = num_total_dataset - num_valid - num_test - num_calib
-    assert num_train > 0, "Non-positive train size; reduce validation_size or keep_n."
-
-    if (args.datasampling == 'uniform' and args.setsdistribtuion == 'equal'):
-        perm = rng.permutation(len(selected_idx))
-        sel = selected_idx
-        idx_tr = sel[perm[:num_train]]
-        idx_va = sel[perm[num_train:num_train + num_valid]]
-        idx_te = sel[perm[num_train + num_valid:num_train + num_valid + num_test]]
-        idx_ca = sel[perm[num_train + num_valid + num_test:]]
-        trainset, validset, testset, calibset = sets_creation_func(dataset, idx_tr, idx_va, idx_te, idx_ca, args.max_km)
-
-    elif (args.datasampling == 'normal' and args.setsdistribtuion == 'equal'):
-        sel = selected_ind_normal(dataset, 0, keep_n, args)
-        perm = rng.permutation(len(sel))
-        idx_tr = sel[perm[:num_train]]
-        idx_va = sel[perm[num_train:num_train + num_valid]]
-        idx_te = sel[perm[num_train + num_valid:num_train + num_valid + num_test]]
-        idx_ca = sel[perm[num_train + num_valid + num_test:]]
-        trainset, validset, testset, calibset = sets_creation_func(dataset, idx_tr, idx_va, idx_te, idx_ca, args.max_km)
-
-    elif (args.datasampling == 'normal' and args.setsdistribtuion == 'diff'):
-        idx_tr = selected_ind_normal(dataset, mu=0, size=num_train, args=args)
-        idx_va = selected_ind_normal(dataset, mu=args.sampling_mu, size=num_valid, args=args, exclude_idx=idx_tr)
-        idx_te = selected_ind_normal(dataset, mu=args.sampling_mu, size=num_test, args=args, exclude_idx=np.concatenate([idx_tr, idx_va]))
-        idx_ca = selected_ind_normal(dataset, mu=args.sampling_mu, size=num_calib, args=args, exclude_idx=np.concatenate([idx_tr, idx_va, idx_te]))
-        trainset, validset, testset, calibset = sets_creation_func(dataset, idx_tr, idx_va, idx_te, idx_ca, args.max_km)
-
-    else:
-        raise ValueError("Unsupported combination for datasampling/setsdistribtuion")
-
-    print(f"num_total: {num_total_dataset}, num_train: {num_train}, num_val: {num_valid}, num_test: {num_test}, num_calib: {num_calib}")
-
-    # ------- Normalize targets by train statistics -------
-    # y_mean = trainset.y.mean(dim=0, keepdim=True) //Orit: removed - 13.10
-    # y_std  = trainset.y.std(dim=0, keepdim=True) + 1e-6
-
-    # trainset.y = (trainset.y - y_mean) / y_std
-    # validset.y = (validset.y - y_mean) / y_std
-    # testset.y  = (testset.y  - y_mean) / y_std
-    # calibset.y = (calibset.y - y_mean) / y_std
-
-    # # TODO: Optional but I think here it is needed
-    # trainset.obs_y = (trainset.obs_y - y_mean) / y_std
-    # validset.obs_y = (validset.obs_y - y_mean) / y_std
-    # testset.obs_y  = (testset.obs_y  - y_mean) / y_std
-    # calibset.obs_y = (calibset.obs_y - y_mean) / y_std
-
-    # # Stats for Δcoord standardization
-    # self.lat_std = trainset.coords[:, 0].std().item() + 1e-6
-    # self.lon_std = trainset.coords[:, 1].std().item() + 1e-6
-
-    # # Relative coords
-    # trainset.obs_coords = (mem_coords[:, 0] - cls_coord[0]) / self.lat_std
-    # dlon = (mem_coords[:, 1] - cls_coord[1]) / self.lon_std
-
-
-    # Keep for inverse-transform if needed
-    # trainset.y_mean = y_mean //Orit: removed - 13.10
-    # trainset.y_std  = y_std
-
-    # ------- Inspect & Cache -------
-    inspect_dataset(trainset, name="Train")
-    inspect_dataset(testset, name="Test")
-    sets_y = {
-        "y_train": trainset.y,
-        "y_train_norm":   trainset.y_norm,
-        "y_val":  validset.y,
-        "y_val_norm": validset.y_norm,
-        "y_test":  testset.y,
-        "y_test_norm": testset.y_norm,
-    }
-    print(f"Elevation shape is: {trainset.y.shape}\n")
-    save_y_series(sets_y, "y_values.csv")
-    torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt")
-    torch.save(validset, f"Transformer_Map_Interp/cache/validset_{cache_key}.pt")  # (fix) save validset correctly
-    torch.save(testset,  f"Transformer_Map_Interp/cache/testset_{cache_key}.pt")
-    torch.save(calibset, f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
-
-    return trainset, validset, testset, calibset
 
 def parse_keep_n_dict(s: str) -> dict[str, float]:
     out = {}
@@ -747,7 +531,7 @@ def set_creation_func(dataset, selected_idx, max_radius_km, trainset=None, neigh
         set.lon_std = train_lon_std
 
         faster_add_transformer_masks(set, set.coords, set.y, set.y_mean, set.y_std,
-                       max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
+                       max_radius_km=max_radius_km, self_exclude=True, max_obs=10, min_k=8)
     else:
         if(neighbors_train_only == False):
              # --- optionally limit to a percentage of extra points ---
@@ -761,10 +545,10 @@ def set_creation_func(dataset, selected_idx, max_radius_km, trainset=None, neigh
                 coords = torch.concat((trainset.coords, set.coords), dim=0)
                 y = torch.concat((trainset.y, set.y), dim=0)
             faster_add_transformer_masks(set, coords, y, trainset.y_mean, trainset.y_std,
-                          max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
+                          max_radius_km=max_radius_km, self_exclude=True, max_obs=10, min_k=8)
         else:
             faster_add_transformer_masks(set, trainset.coords, trainset.y, trainset.y_mean, trainset.y_std,
-                        max_radius_km=max_radius_km, self_exclude=True, max_obs=256, min_k=8)
+                        max_radius_km=max_radius_km, self_exclude=True, max_obs=10, min_k=8)
         
 
     return set
@@ -800,8 +584,12 @@ def load_multi_dt2_data(args):
             raise FileNotFoundError(f"File for {name} set does not exist: {path}")
 
     # Check for cache existence
+    # cache_exists = all(
+    #     os.path.exists(f"Transformer_Map_Interp/cache/{name}set_{cache_key}.pt")
+    #     for name in set_configs
+    # )
     cache_exists = all(
-        os.path.exists(f"Transformer_Map_Interp/cache/{name}set_{cache_key}.pt")
+        os.path.exists(f"Transformer_Map_Interp/cache/{name}set_2_M_points_10_nei_new_saving_with_batching.pt")
         for name in set_configs
     )
 
@@ -853,8 +641,9 @@ def load_multi_dt2_data(args):
     testset = final_sets['test']
     #calibset = final_sets['calib']
 
-     # ------- Inspect & Cache -------
+    # ------- Inspect & Cache -------
     inspect_dataset(trainset, name="Train")
+    inspect_dataset(validset, name="valid")
     inspect_dataset(testset, name="Test")
     
     sets_y = {
@@ -868,9 +657,10 @@ def load_multi_dt2_data(args):
     save_y_series(sets_y, "y_values.csv")
 
     # Cache the final SpatialDataset objects
-    torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt")
-    torch.save(validset, f"Transformer_Map_Interp/cache/validset_{cache_key}.pt")
-    torch.save(testset,  f"Transformer_Map_Interp/cache/testset_{cache_key}.pt")
+    print("Saving sets...")
+    torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_2_M_points_10_nei_new_saving_with_batching.pt")
+    torch.save(validset, f"Transformer_Map_Interp/cache/validset_2_M_points_10_nei_new_saving_with_batching.pt")
+    torch.save(testset,  f"Transformer_Map_Interp/cache/testset_2_M_points_10_nei_new_saving_with_batching.pt")
     #torch.save(calibset, f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
     print (f"build Kdtree Lap: {time.perf_counter() - t0:.3f}s")
     return trainset, validset, testset#, calibset

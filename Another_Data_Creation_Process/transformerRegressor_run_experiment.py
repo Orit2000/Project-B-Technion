@@ -3,11 +3,11 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import get_cosine_schedule_with_warmup
-from Transformer_Map_Interp.datasets.transformerRegressorDataClass import (
+from transformerRegressorDataClass import (
     TransformerPointDataset, collate_point_batches
 )
-from Transformer_Map_Interp.datasets.dt2_data import load_multi_dt2_data
-from Transformer_Map_Interp.models.transformerRegressor import TransformerCLSRegressor
+from dt2_data import load_dt2_data, load_multi_dt2_data
+from transformerRegressor import TransformerCLSRegressor
 from torch.utils.tensorboard import SummaryWriter
 
 def debug_shape(phase, mem):
@@ -28,10 +28,10 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
     def _ensure_dir(p: str):
         os.makedirs(p, exist_ok=True)
 
-    def _save_metrics(save_dir: str, rows: list[dict], Name: str = "regular"):
+    def _save_metrics(save_dir: str, rows: list[dict]):
         _ensure_dir(save_dir)
-        csv_path = os.path.join(save_dir, f"metrics_{Name}.csv")
-        pt_path = os.path.join(save_dir, f"metrics_{Name}.pt")
+        csv_path = os.path.join(save_dir, "metrics.csv")
+        pt_path = os.path.join(save_dir, "metrics.pt")
 
         if rows:
             fieldnames = list(rows[0].keys())
@@ -51,12 +51,11 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
         se_real = 0.0
         ae_real = 0.0
         n = 0
-        for mem, y, _ in loader:
+        for mem, mask, y, _ in loader:
             # (your dataset typically already yields tensors on device; .to is a no-op if so)
-            #mem, mask, y = mem.to(device), mask.to(device), y.to(device)
-            mem, y = mem.to(device), y.to(device)
+            mem, mask, y = mem.to(device), mask.to(device), y.to(device)
             #debug_shape(phase, mem)
-            y_hat = model(mem)
+            y_hat = model(mem, mask)
             loss = loss_fn(y_hat, y)
             tot_loss += loss.item() * y.size(0)
 
@@ -148,15 +147,12 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
         model.train()
         train_loss_acc = 0.0
         n_train = 0 
-        for batch_idx, (mem, y, _) in enumerate( #(mem, mask, y, _) 
+        for batch_idx, (mem, mask, y, _) in enumerate(
         tqdm(train_loader, desc=f"[Epoch {epoch}] train"), start=1): #mem_tokens, pad_mask, y, cls_coords
-            #mem, mask, y = mem.to(dev), mask.to(dev), y.to(dev)
-            mem, y = mem.to(dev),  y.to(dev)
-            #print(f"Mask: {mask}")
+            mem, mask, y = mem.to(dev), mask.to(dev), y.to(dev)
             optim.zero_grad()
             #debug_shape("train", mem)
-            #y_hat = model(mem, mask)
-            y_hat = model(mem)
+            y_hat = model(mem, mask)
             loss = loss_fn(y_hat, y)
             loss.backward()
             optim.step()
@@ -165,17 +161,11 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
             n_train += y.size(0)
             
             # --- log every 100 batches ---
-            if (batch_idx % 1000) == 0:
-                val_eval = _eval_epoch(model, valid_loader, y_mean, y_std, dev, "eval - val")
+            if (batch_idx % 100) == 0:
                 batch_row = {
                     "epoch": epoch,
                     "batch_idx": batch_idx,
-                    "train_loss_norm": loss.item(),
-                    "train_loss": loss.item() * y_std + y_mean,  # approximate real units for batch
-                    "val_loss_norm": val_eval["loss"],
-                    "val_mse": val_eval["mse"],
-                    "val_mae": val_eval["mae"],
-                    "lr": optim.param_groups[0]["lr"],
+                    "batch_loss": loss.item(),
                 }
                 batch_metrics_rows.append(batch_row)
                 
@@ -228,15 +218,14 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
             torch.save(model.state_dict(), os.path.join(save_dir, f"best_model_{epoch}.pt"))
             print(f" New best model at epoch {epoch} with val_loss={best_val:.6f}")
             
-        if (epoch % 1) == 0:
+        if (epoch % 5) == 0:
             ckpt_path = os.path.join(save_dir, f"checkpoint_epoch{epoch+1}.pt")
             torch.save({
                 "epoch": epoch + 1,
                 "model_state": model.state_dict(),
                 "optimizer_state": optim.state_dict(),
                 "best_val": best_val,
-                "metrics_epoch": metrics_rows,
-                "metrics_batch": batch_metrics_rows,
+                "metrics": metrics_rows,
             }, ckpt_path)
             print(f" 💾 Checkpoint saved at epoch {epoch+1} -> {ckpt_path}")
             if tb_writer:
@@ -270,7 +259,6 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
     #     model.load_state_dict(best_state)
 
     _save_metrics(save_dir, metrics_rows)
-    _save_metrics(save_dir, batch_metrics_rows,"batch")
     torch.save(model.state_dict(), os.path.join(save_dir, "last_epoch_model.pt"))
 
     # ---------------------------

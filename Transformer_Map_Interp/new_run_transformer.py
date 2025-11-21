@@ -5,7 +5,7 @@ from models.setformer import SetFormer
 import torch.nn as nn
 
 from datasets.TransformerDataset import TransformerDataset
-from datasets.dt2_data import load_dt2_data
+from Transformer_Map_Interp.datasets.dt2_data_orig____ import load_dt2_data
 
 
 

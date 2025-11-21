@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from conformalPrediction.geocp import GeoCPWrapper
 from datasets.data import SpatialDataset
-from datasets.dt2_data import load_dt2_data
+from Transformer_Map_Interp.datasets.dt2_data_orig____ import load_dt2_data
 import pickle
 
 def MSE(y_true, y_pred):

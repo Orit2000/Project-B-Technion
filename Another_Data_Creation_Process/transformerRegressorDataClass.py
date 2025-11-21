@@ -131,8 +131,8 @@ class TransformerPointDataset(Dataset):
         mem_tokens = torch.stack([dlat, dlon, mem_y], dim=-1) # Orit 12.10 - removed is_observed
 
         # No padding needed here; collate will pad to batch max
-        # pad_mask = torch.zeros(mem_tokens.size(0), dtype=torch.bool, device=self.device) Orit - New
-        return mem_tokens# , pad_mask Orit - New
+        pad_mask = torch.zeros(mem_tokens.size(0), dtype=torch.bool, device=self.device)
+        return mem_tokens, pad_mask
 
         # is_obs = torch.ones_like(self.nei_y[idx])
 
@@ -149,11 +149,10 @@ class TransformerPointDataset(Dataset):
 
         # exclude = self.is_training_targets  # during training, exclude self if it is in trainset
         # mem_tokens, pad_mask = self._build_memory(cls_coord, exclude_self=exclude)
-        # mem_tokens, pad_mask = self._build_memory(idx) Orit - New
-        mem_tokens = self._build_memory(idx)
+        mem_tokens, pad_mask = self._build_memory(idx)
         return {
             "mem_tokens": mem_tokens,        # (S, 4)
-            #"pad_mask": pad_mask,            # (S,) Orit - New
+            "pad_mask": pad_mask,            # (S,)
             "y": y_tgt,                      # ()
             "cls_coord": cls_coord,          # (2,)
         }
@@ -167,15 +166,15 @@ def collate_point_batches(batch):
 
     mem_tokens = torch.zeros(B, S, batch[0]["mem_tokens"].shape[1], device=device)
     #print(f"Mem_tokens shape is {mem_tokens.shape}")
-    #pad_mask = torch.ones(B, S, dtype=torch.bool, device=device)  # True = PAD by default Orit - New
+    pad_mask = torch.ones(B, S, dtype=torch.bool, device=device)  # True = PAD by default
     y = torch.zeros(B, device=device)
     cls_coords = torch.zeros(B, 2, device=device)
 
     for i, item in enumerate(batch):
         s = item["mem_tokens"].shape[0]
         mem_tokens[i, :s] = item["mem_tokens"]
-        #pad_mask[i, :s] = item["pad_mask"]  # False for real tokens Orit - New
+        pad_mask[i, :s] = item["pad_mask"]  # False for real tokens
         y[i] = item["y"]
         cls_coords[i] = item["cls_coord"] # Don't I need to make it zero zero ??
 
-    return mem_tokens, y, cls_coords #mem_tokens, pad_mask, y, cls_coords
+    return mem_tokens, pad_mask, y, cls_coords

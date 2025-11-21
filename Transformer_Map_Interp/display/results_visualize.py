@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # ====== EDIT IF NEEDED ======
-CSV  = "saved_models/Exp_5/metrics.csv"     # path to your metrics CSV
+CSV  = "saved_models/Exp_9_first_2_m_with_10_tokens/metrics_regular.csv"     # path to your metrics CSV
 SAVE = True             # True = save PNGs, False = show() interactively
 OUT  = "metrics_plots"   # folder for saved figures if SAVE=True
 # ============================
@@ -49,7 +49,7 @@ if loss_cols:
     plt.legend()
     plt.tight_layout()
     if SAVE:
-        plt.savefig(os.path.join(OUT, "loss.png"), dpi=150)
+        plt.savefig(os.path.join(OUT, "loss_exp_9_reg.png"), dpi=150)
         plt.close()
     else:
         plt.show()
@@ -66,7 +66,7 @@ if mse_cols:
     plt.legend()
     plt.tight_layout()
     if SAVE:
-        plt.savefig(os.path.join(OUT, "mse.png"), dpi=150)
+        plt.savefig(os.path.join(OUT, "mse_exp_9_reg.png"), dpi=150)
         plt.close()
     else:
         plt.show()
