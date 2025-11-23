@@ -595,10 +595,13 @@ def load_multi_dt2_data(args):
 
     if cache_exists and (args.new_spread == False):
         print("Loading cached sets...")
-        trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt", weights_only=False)
-        validset = torch.load(f"Transformer_Map_Interp/cache/validset_{cache_key}.pt", weights_only=False)
-        testset  = torch.load(f"Transformer_Map_Interp/cache/testset_{cache_key}.pt",  weights_only=False)
+        # trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_{cache_key}.pt", weights_only=False)
+        # validset = torch.load(f"Transformer_Map_Interp/cache/validset_{cache_key}.pt", weights_only=False)
+        # testset  = torch.load(f"Transformer_Map_Interp/cache/testset_{cache_key}.pt",  weights_only=False)
         # calibset = torch.load(f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt", weights_only=False)
+        trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_2_M_points_10_nei_new_saving_with_batching.pt", weights_only=False)
+        validset = torch.load(f"Transformer_Map_Interp/cache/validset_2_M_points_10_nei_new_saving_with_batching.pt", weights_only=False)
+        testset  = torch.load(f"Transformer_Map_Interp/cache/testset_2_M_points_10_nei_new_saving_with_batching.pt",  weights_only=False)
         return trainset, validset, testset #, calibset
 
     print("Creating and caching sets...")
@@ -646,15 +649,15 @@ def load_multi_dt2_data(args):
     inspect_dataset(validset, name="valid")
     inspect_dataset(testset, name="Test")
     
-    sets_y = {
-        "y_train": trainset.y,
-        "y_train_norm": trainset.y_norm,
-        "y_val": validset.y,
-        "y_val_norm": validset.y_norm,
-        "y_test": testset.y,
-        "y_test_norm": testset.y_norm,
-    }
-    save_y_series(sets_y, "y_values.csv")
+    # sets_y = {
+    #     "y_train": trainset.y,
+    #     "y_train_norm": trainset.y_norm,
+    #     "y_val": validset.y,
+    #     "y_val_norm": validset.y_norm,
+    #     "y_test": testset.y,
+    #     "y_test_norm": testset.y_norm,
+    # }
+    # save_y_series(sets_y, "y_values.csv")
 
     # Cache the final SpatialDataset objects
     print("Saving sets...")

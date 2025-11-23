@@ -14,9 +14,9 @@ from scipy.interpolate import LinearNDInterpolator
 # Configuration
 # ---------------------------------------------------------
 p_cache = Path("Transformer_Map_Interp/cache")
-suffix = "_10neighbors"   # appended to saved files
+suffix = "_5neighbors"   # appended to saved files
 use_fixed_n = True         # True → keep exactly 10 neighbors, False → keep 10% of them
-n_keep = 10
+n_keep = 5
 keep_ratio = 0.1
 rng = np.random.default_rng(42)   # reproducibility
 
@@ -59,14 +59,14 @@ def downsample_neighbors(dataset, use_fixed_n, n_keep,keep_ratio=0.1):
 # Process train/val/test sets
 # ---------------------------------------------------------
 for split in ["trainset", "validset", "testset"]:
-    fname = f"{split}_n32_e035_1arc_v3_cropped_train_n32_e035_1arc_v3_cropped_val_n32_e035_1arc_v3_cropped_test_keep_n0.05_seed5.pt"
+    fname = f"{split}_2_M_points_10_nei_new_saving_with_batching.pt"
     fpath = p_cache / fname
     print(f"Loading {fpath}")
     dataset = torch.load(fpath, map_location="cpu", weights_only=False)
 
     print(f"Downsampling neighbors for {split} set...")
     dataset = downsample_neighbors(dataset,use_fixed_n,n_keep)
-    fsave = f"{split}_resampled_10_nei_from_0.05.pt"
+    fsave = f"{split}_2_M_points_5_nei_new_saving_with_batching.pt"
     save_path = p_cache / fsave
     torch.save(dataset, save_path)
     print(f"✅ Saved {split} set → {save_path}")

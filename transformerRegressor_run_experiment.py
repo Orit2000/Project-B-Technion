@@ -237,6 +237,7 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
                 "best_val": best_val,
                 "metrics_epoch": metrics_rows,
                 "metrics_batch": batch_metrics_rows,
+                "hparams": vars(args),   # <--- add this line
             }, ckpt_path)
             print(f" 💾 Checkpoint saved at epoch {epoch+1} -> {ckpt_path}")
             if tb_writer:
