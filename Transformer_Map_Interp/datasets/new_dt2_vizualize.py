@@ -8,17 +8,19 @@ def meters_per_degree(latitude_deg):
     return lat_m, lon_m
 
 # Load the DTED file
-dt2_file = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3_cropped_val.tiff" 
+dt2_file = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3.dt2" 
 #dt2_file = "Transformer_Map_Interp/datasets/n33_e035_1arc_v3.dt2"
 with rasterio.open(dt2_file) as dataset:
-    elevation = dataset.read(1)
-    nodata = dataset.nodata
+    #nodata = dataset.nodata
     bounds = dataset.bounds
     width, height = dataset.width, dataset.height
     xres_deg, yres_deg = dataset.res  # deg/pixel (yres will likely be negative)
     xres_deg = float(xres_deg)
     yres_deg = abs(float(yres_deg))
-    elevation = np.ma.masked_equal(elevation, nodata)
+     # FIX: read the elevation correctly
+    elevation = dataset.read(1).astype(float)
+
+    #elevation = np.ma.masked_equal(elevation, nodata)
 
     # Mid-latitude for better lon->meters conversion
     mid_lat = (bounds.top + bounds.bottom) / 2.0
@@ -43,28 +45,37 @@ print(f"Map size: {width} x {height} pixels")
 print(f"Map size: {width_m/1000:.3f} km (W) × {height_m/1000:.3f} km (H)")
 print(f"Extent (lon/lat): {bounds}")
 
-valid = ~elevation.mask                     # boolean mask of kept pixels
-vals = elevation[valid]                     # elevations at those pixels (1D)
-rows, cols = np.where(valid)
+#valid = ~elevation.mask                     # boolean mask of kept pixels
+#vals = elevation#[valid]                     # elevations at those pixels (1D)
+#rows, cols = np.where(valid)
 # pixel indices -> geographic coords (lon, lat)
-xs, ys = rasterio.transform.xy(transform, rows, cols)
+#xs, ys = rasterio.transform.xy(transform, rows, cols)
 # Plot (save before show to ensure file is written)
 plt.figure(figsize=(10, 8))
-#plt.imshow(elevation, cmap="terrain", extent=extent, origin="upper")
-plt.scatter(xs, ys, c=vals, s=2, cmap="terrain", marker='.')
+plt.imshow(elevation, cmap="terrain", extent=extent, origin="upper")
+#plt.scatter(xs, ys, c=vals, s=2, cmap="terrain", marker='.')
 plt.colorbar(label="Elevation (m)")
 plt.title("DTED Level 2 Elevation Data")
 plt.xlabel("Longitude")
 plt.ylabel("Latitude")
-plt.savefig("Transformer_Map_Interp/datasets/dt2_region.png", dpi=150, bbox_inches="tight")
+plt.savefig("Transformer_Map_Interp/datasets/full_dt2_region.png", dpi=150, bbox_inches="tight")
+plt.show()
+
+plt.figure(figsize=(10, 8))
+plt.hist(elevation, bins=50)  # adjust bins as you like
+plt.xlabel("Elevation (m)")
+plt.ylabel("Count")
+plt.title("Elevation Histogram")
+plt.tight_layout()
+plt.savefig("Transformer_Map_Interp/datasets/full_dt2_elevation_hist.png", dpi=200)
 plt.show()
 
 print("Elevation dtype:", elevation.dtype)
-print("Nodata value:", nodata)
-print("Masked values count:", np.sum(elevation.mask))
-print("Valid values count:", np.sum(~elevation.mask))
+# print("Nodata value:", nodata)
+# print("Masked values count:", np.sum(elevation.mask))
+# print("Valid values count:", np.sum(~elevation.mask))
 print("Min/Max of valid data:", elevation.min(), elevation.max())
-num_points = vals.size
+num_points = total_points = elevation.size
 total_points = elevation.size
 print(f"Number of valid (non-nodata) points: {num_points:,}")
 print(f"Fraction of valid points: {100 * num_points / total_points:.3f}%")
