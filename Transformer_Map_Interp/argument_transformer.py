@@ -79,11 +79,11 @@ def parse_opt():
 )
     #args, unknowns = parser.parse_known_args()
     #args = parser.parse_args(custom_args)  # ← don't use sys.argv at all
-    parser.add_argument('--train_file', type=str, default="n32_e035_1arc_v3_cropped_train.tiff")
-    parser.add_argument('--valid_file', type=str, default="n32_e035_1arc_v3_cropped_val.tiff")
-    parser.add_argument('--test_file', type=str, default="n32_e035_1arc_v3_cropped_test.tiff")
+    parser.add_argument('--train_file', type=str, default="train_blobs_new.tiff")
+    parser.add_argument('--valid_file', type=str, default="val_blobs_new.tiff")
+    parser.add_argument('--test_file', type=str, default="test_blobs_new.tiff")
     parser.add_argument('--calib_file', type=str, default="n32_e035_1arc_v3__cropped_test.tiff")
-    parser.add_argument('--keep_n_dict', type=str, default="train:0.25,valid:0.05,test:0.05,calib:0.000001") #Orit - I changes this!! from 0.005 to 0.05
+    parser.add_argument('--keep_n_dict', type=str, default="train:0.0001,valid:0.0001,test:0.0001,calib:0.000001") #train:0.25,valid:0.05,test:0.05,calib:0.000001
 
     args, unknowns = parser.parse_known_args()
     args.save_path = f"saved_models/{args.model}_{args.dataset}/"

@@ -42,6 +42,7 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
                     w.writerow(r)
         torch.save(rows, pt_path)
 
+
     @torch.no_grad()
     def _eval_epoch(model, loader, y_mean: torch.Tensor, y_std: torch.Tensor, device: torch.device, phase) -> Dict[str, float]:
         """Returns dict with normalized loss, plus real-units MSE/MAE."""
@@ -126,7 +127,7 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
         num_warmup_steps=num_warmup_steps,
         num_training_steps=num_training_steps,
     )
-        # y stats for de-normalization
+    # y stats for de-normalization
     y_std = ds_train.y_std if isinstance(ds_train.y_std, torch.Tensor) else torch.tensor(ds_train.y_std or 1.0)
     y_mean = ds_train.y_mean if isinstance(ds_train.y_mean, torch.Tensor) else torch.tensor(ds_train.y_mean or 0.0)
     y_std = y_std.to(dev)
@@ -165,13 +166,13 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
             n_train += y.size(0)
             
             # --- log every 100 batches ---
-            if (batch_idx % 1000) == 0:
+            if (batch_idx % 10) == 0:
                 val_eval = _eval_epoch(model, valid_loader, y_mean, y_std, dev, "eval - val")
                 batch_row = {
                     "epoch": epoch,
                     "batch_idx": batch_idx,
                     "train_loss_norm": loss.item(),
-                    "train_loss": loss.item() * y_std + y_mean,  # approximate real units for batch
+                    "train_loss": float(loss.item() * y_std + y_mean),  # approximate real units for batch
                     "val_loss_norm": val_eval["loss"],
                     "val_mse": val_eval["mse"],
                     "val_mae": val_eval["mae"],

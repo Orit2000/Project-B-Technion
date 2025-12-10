@@ -33,6 +33,7 @@ class DT2Dataset(Dataset):
             height, width = elevation.shape
             # nodata = src.nodata
             # elevation = np.ma.masked_equal(elevation, nodata)
+            
             # valid = ~elevation.mask                     # boolean mask of kept pixels
             # elevation = elevation[valid]                     # elevations at those pixels (1D)
             
@@ -40,10 +41,34 @@ class DT2Dataset(Dataset):
             lon_coords = np.array([transform[2] + i * transform[0] for i in range(width)])
             lat_coords = np.array([transform[5] + j * transform[4] for j in range(height)])
             lon_grid, lat_grid = np.meshgrid(lon_coords, lat_coords)
+            ### CHANGE
+            valid_mask = elevation > 0
+            # Calculate stats for debugging
+            total_pixels = elevation.size
+            kept_pixels = np.sum(valid_mask)
+            print(f"Filtering: Kept {kept_pixels}/{total_pixels} points (dropped <= 0)")
+
+            if kept_pixels == 0:
+                raise ValueError(f"No valid points found in {dt2_file} with criterion > 0")
+
+            # Apply mask to extract only valid data
+            # Numpy boolean indexing automatically flattens the result into 1D arrays
+            valid_lats = lat_grid[valid_mask]
+            valid_lons = lon_grid[valid_mask]
+            valid_elevs = elevation[valid_mask]
+            # --- FILTERING LOGIC END ---
+
+            # Stack coordinates: [N, 2] -> (lat, lon)
+            coords = np.stack([valid_lats.flatten(), valid_lons.flatten()], axis=1)
+            
+            # Reshape elevations: [N, 1]
+            elevations = valid_elevs.flatten().astype(np.float32).reshape(-1, 1)
 
             # Flatten
-            coords = np.stack([lat_grid.flatten(), lon_grid.flatten()], axis=1)  # [N,2] (lat,lon)
-            elevations = elevation.flatten().astype(np.float32).reshape(-1, 1)   # [N,1]
+            # coords = np.stack([lat_grid.flatten(), lon_grid.flatten()], axis=1)  # [N,2] (lat,lon)
+            # elevations = elevation.flatten().astype(np.float32).reshape(-1, 1)   # [N,1]
+            ### CHANGE ENDS
+
 
             # Features: by default just coords; optionally concat elevation
             if include_elevation_in_features:
@@ -661,9 +686,12 @@ def load_multi_dt2_data(args):
 
     # Cache the final SpatialDataset objects
     print("Saving sets...")
-    torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_2_M_points_10_nei_new_saving_with_batching.pt")
-    torch.save(validset, f"Transformer_Map_Interp/cache/validset_2_M_points_10_nei_new_saving_with_batching.pt")
-    torch.save(testset,  f"Transformer_Map_Interp/cache/testset_2_M_points_10_nei_new_saving_with_batching.pt")
+    # torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_2_M_points_10_nei_new_saving_with_batching.pt")
+    # torch.save(validset, f"Transformer_Map_Interp/cache/validset_2_M_points_10_nei_new_saving_with_batching.pt")
+    # torch.save(testset,  f"Transformer_Map_Interp/cache/testset_2_M_points_10_nei_new_saving_with_batching.pt")
+    torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_blobed.pt")
+    torch.save(validset, f"Transformer_Map_Interp/cache/validset_blobed.pt")
+    torch.save(testset,  f"Transformer_Map_Interp/cache/testset_blobed.pt")
     #torch.save(calibset, f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
     print (f"build Kdtree Lap: {time.perf_counter() - t0:.3f}s")
     return trainset, validset, testset#, calibset
