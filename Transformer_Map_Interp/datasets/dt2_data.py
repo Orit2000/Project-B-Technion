@@ -624,9 +624,12 @@ def load_multi_dt2_data(args):
         # validset = torch.load(f"Transformer_Map_Interp/cache/validset_{cache_key}.pt", weights_only=False)
         # testset  = torch.load(f"Transformer_Map_Interp/cache/testset_{cache_key}.pt",  weights_only=False)
         # calibset = torch.load(f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt", weights_only=False)
-        trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_2_M_points_10_nei_new_saving_with_batching.pt", weights_only=False)
-        validset = torch.load(f"Transformer_Map_Interp/cache/validset_2_M_points_10_nei_new_saving_with_batching.pt", weights_only=False)
-        testset  = torch.load(f"Transformer_Map_Interp/cache/testset_2_M_points_10_nei_new_saving_with_batching.pt",  weights_only=False)
+        # trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_2_M_points_10_nei_new_saving_with_batching.pt", weights_only=False)
+        # validset = torch.load(f"Transformer_Map_Interp/cache/validset_2_M_points_10_nei_new_saving_with_batching.pt", weights_only=False)
+        # testset  = torch.load(f"Transformer_Map_Interp/cache/testset_2_M_points_10_nei_new_saving_with_batching.pt",  weights_only=False)
+        trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_blobed.pt", weights_only=False)
+        validset = torch.load(f"Transformer_Map_Interp/cache/validset_blobed.pt", weights_only=False)
+        testset  = torch.load(f"Transformer_Map_Interp/cache/testset_blobed.pt",  weights_only=False)
         return trainset, validset, testset #, calibset
 
     print("Creating and caching sets...")

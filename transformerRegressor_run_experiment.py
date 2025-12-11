@@ -144,11 +144,17 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
     # ---------------------------
     # Training epochs
     # ---------------------------
+    PATIENCE = 5  # check last 3 vs previous 3
+    early_stop_triggered = False
     for epoch in range(args.epochs):
         # ---- Train step (accumulate normalized train loss) ----
         model.train()
         train_loss_acc = 0.0
         n_train = 0 
+        if epoch == 0:
+            batch_idx_max = 1000
+        else:
+            batch_idx_max = 3000
         for batch_idx, (mem, y, _) in enumerate( #(mem, mask, y, _) 
         tqdm(train_loader, desc=f"[Epoch {epoch}] train"), start=1): #mem_tokens, pad_mask, y, cls_coords
             #mem, mask, y = mem.to(dev), mask.to(dev), y.to(dev)
@@ -164,26 +170,70 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
             scheduler.step()
             train_loss_acc += loss.item() * y.size(0)
             n_train += y.size(0)
-            
-            # --- log every 100 batches ---
-            if (batch_idx % 10) == 0:
+            # --- log every 1000 batches ---
+            if (batch_idx % batch_idx_max) == 0:
+                #train_loss_norm = train_loss_acc / max(n_train, 1)
                 val_eval = _eval_epoch(model, valid_loader, y_mean, y_std, dev, "eval - val")
+                y_hat_real = y_hat * y_std + y_mean
+                y_real     = y * y_std + y_mean
                 batch_row = {
                     "epoch": epoch,
                     "batch_idx": batch_idx,
                     "train_loss_norm": loss.item(),
-                    "train_loss": float(loss.item() * y_std + y_mean),  # approximate real units for batch
+                    "train_loss": float(torch.mean((y_hat_real- y_real)**2).item()),  # approximate real units for batch
+                    "train_mae": float(torch.mean(torch.abs(y_hat_real - y_real)).item()),
                     "val_loss_norm": val_eval["loss"],
                     "val_mse": val_eval["mse"],
                     "val_mae": val_eval["mae"],
                     "lr": optim.param_groups[0]["lr"],
                 }
+                
+                print(
+                    f"Batch {batch_idx}: "
+                    f"train_loss={loss.item():.6f} | train_MSE={batch_row['train_loss']:.6f} | train_MAE={batch_row['train_mae']:.6f} || "
+                    f"val_loss={val_eval['loss']:.6f} | val_MSE={val_eval['mse']:.6f} | val_MAE={val_eval['mae']:.6f}"
+                )
                 batch_metrics_rows.append(batch_row)
                 
-            if tb_writer:
-                global_step = epoch * len(train_loader) + batch_idx
-                tb_writer.add_scalar("loss/train_batch", loss.item(), global_step)
+                if len(batch_metrics_rows) >= 2 * PATIENCE:
+                    # last 3 validation losses
+                    recent_vals = [r["val_loss_norm"] for r in batch_metrics_rows[-PATIENCE:]]
 
+                    # previous 3 validation losses
+                    prev_vals = [r["val_loss_norm"] for r in batch_metrics_rows[-2*PATIENCE:-PATIENCE]]
+
+                    if (sum(recent_vals) / PATIENCE) >= (sum(prev_vals) / PATIENCE):
+                        print("\n🔥 Early stopping inside epoch: validation not improving.")
+                        print(f"Stopped at batch {batch_idx} of epoch {epoch}.")
+                        
+                        # Save checkpoint before breaking
+                        ckpt_path = os.path.join(save_dir, f"stopped_early_at_epoch_{epoch}_batch{batch_idx}.pt")
+                        torch.save({
+                            "epoch": epoch,
+                            "batch_idx": batch_idx,
+                            "model_state": model.state_dict(),
+                            "optimizer_state": optim.state_dict(),
+                            "metrics_epoch": metrics_rows,
+                            "metrics_batch": batch_metrics_rows,
+                        }, ckpt_path)
+                        print(f"Checkpoint saved to: {ckpt_path}\n")
+                        early_stop_triggered = True
+                        # break out of the batch loop (finish epoch)
+                        break
+                    
+                if val_eval["loss"] < best_val:
+                    best_val = val_eval["loss"]
+                    best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+                    torch.save(model.state_dict(), os.path.join(save_dir, f"best_model_epoch_{epoch}_batch_{batch_idx}.pt"))
+                    print(f" New best model at epoch {epoch}, batch {batch_idx} with val_loss={best_val:.6f}")
+                    _save_metrics(save_dir, batch_metrics_rows,"batch")
+                        
+                if tb_writer:
+                    global_step = epoch * len(train_loader) + batch_idx
+                    tb_writer.add_scalar("loss/train_batch", loss.item(), global_step)  
+                                       
+        if early_stop_triggered:
+            break    
         train_loss_norm = train_loss_acc / max(n_train, 1)
 
         # ---- Eval: train metrics (real units) ----
@@ -223,33 +273,33 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
 
             tb_writer.add_scalar("lr", optim.param_groups[0]["lr"], epoch)
 
-        if val_eval["loss"] < best_val:
-            best_val = val_eval["loss"]
-            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
-            torch.save(model.state_dict(), os.path.join(save_dir, f"best_model_{epoch}.pt"))
-            print(f" New best model at epoch {epoch} with val_loss={best_val:.6f}")
+        # if val_eval["loss"] < best_val:
+        #     best_val = val_eval["loss"]
+        #     best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+        #     torch.save(model.state_dict(), os.path.join(save_dir, f"best_model_{epoch}.pt"))
+        #     print(f" New best model at epoch {epoch} with val_loss={best_val:.6f}")
             
-        if (epoch % 1) == 0:
-            ckpt_path = os.path.join(save_dir, f"checkpoint_epoch{epoch+1}.pt")
-            torch.save({
-                "epoch": epoch + 1,
-                "model_state": model.state_dict(),
-                "optimizer_state": optim.state_dict(),
-                "best_val": best_val,
-                "metrics_epoch": metrics_rows,
-                "metrics_batch": batch_metrics_rows,
-                "hparams": vars(args),   # <--- add this line
-            }, ckpt_path)
-            print(f" 💾 Checkpoint saved at epoch {epoch+1} -> {ckpt_path}")
-            if tb_writer:
-                tb_writer.add_text("checkpoint", f"Saved checkpoint (epoch {epoch+1})", epoch)
+        # if (epoch % 1) == 0:
+        #     ckpt_path = os.path.join(save_dir, f"checkpoint_epoch{epoch+1}.pt")
+        #     torch.save({
+        #         "epoch": epoch + 1,
+        #         "model_state": model.state_dict(),
+        #         "optimizer_state": optim.state_dict(),
+        #         "best_val": best_val,
+        #         "metrics_epoch": metrics_rows,
+        #         "metrics_batch": batch_metrics_rows,
+        #         "hparams": vars(args),   # <--- add this line
+        #     }, ckpt_path)
+        #     print(f" 💾 Checkpoint saved at epoch {epoch+1} -> {ckpt_path}")
+        #     if tb_writer:
+        #         tb_writer.add_text("checkpoint", f"Saved checkpoint (epoch {epoch+1})", epoch)
 
-        if (epoch > args.es_patience) and (len(metrics_rows) > (args.es_patience + 3)):
-            recent = sum(r["val_loss_norm"] for r in metrics_rows[-3:]) / 3
-            prev   = sum(r["val_loss_norm"] for r in metrics_rows[-(args.es_patience + 3):-3]) / args.es_patience
-            if recent > prev:
-                print(f"Early stopping at epoch {epoch}")
-                break
+        # if (epoch > args.es_patience) and (len(metrics_rows) > (args.es_patience + 3)):
+        #     recent = sum(r["val_loss_norm"] for r in metrics_rows[-3:]) / 3
+        #     prev   = sum(r["val_loss_norm"] for r in metrics_rows[-(args.es_patience + 3):-3]) / args.es_patience
+        #     if recent > prev:
+        #         print(f"Early stopping at epoch {epoch}")
+        #         break
         
     if tb_writer:
     # pack your args into a flat dict of strings/numbers

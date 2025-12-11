@@ -8,7 +8,7 @@ def meters_per_degree(latitude_deg):
     return lat_m, lon_m
 
 # Load the DTED file
-dt2_file = "Transformer_Map_Interp/datasets/n32_e035_1arc_v3.dt2" 
+dt2_file = "Transformer_Map_Interp/datasets/merged.tif" 
 #dt2_file = "Transformer_Map_Interp/datasets/n33_e035_1arc_v3.dt2"
 with rasterio.open(dt2_file) as dataset:
     #nodata = dataset.nodata
@@ -58,7 +58,7 @@ plt.colorbar(label="Elevation (m)")
 plt.title("DTED Level 2 Elevation Data")
 plt.xlabel("Longitude")
 plt.ylabel("Latitude")
-plt.savefig("Transformer_Map_Interp/datasets/full_dt2_region.png", dpi=150, bbox_inches="tight")
+plt.savefig("Transformer_Map_Interp/datasets/merged.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 plt.figure(figsize=(10, 8))
@@ -67,7 +67,7 @@ plt.xlabel("Elevation (m)")
 plt.ylabel("Count")
 plt.title("Elevation Histogram")
 plt.tight_layout()
-plt.savefig("Transformer_Map_Interp/datasets/full_dt2_elevation_hist.png", dpi=200)
+plt.savefig("Transformer_Map_Interp/datasets/merged_elevation_hist.png", dpi=200)
 plt.show()
 
 print("Elevation dtype:", elevation.dtype)
