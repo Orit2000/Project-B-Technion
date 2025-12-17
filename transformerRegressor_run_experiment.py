@@ -120,7 +120,7 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
     loss_fn = torch.nn.MSELoss(reduction="mean")
     optim = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     num_training_steps = len(train_loader) * args.epochs
-    num_warmup_steps = int(0.05 * num_training_steps)
+    num_warmup_steps = int(0.1 * num_training_steps)
 
     scheduler = get_cosine_schedule_with_warmup(
         optim,
@@ -144,7 +144,7 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
     # ---------------------------
     # Training epochs
     # ---------------------------
-    PATIENCE = 5  # check last 3 vs previous 3
+    #PATIENCE = 4  # check last 3 vs previous 3
     early_stop_triggered = False
     for epoch in range(args.epochs):
         # ---- Train step (accumulate normalized train loss) ----
@@ -152,9 +152,9 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
         train_loss_acc = 0.0
         n_train = 0 
         if epoch == 0:
-            batch_idx_max = 1000
+            batch_idx_max = 5000
         else:
-            batch_idx_max = 3000
+            batch_idx_max = 5000
         for batch_idx, (mem, y, _) in enumerate( #(mem, mask, y, _) 
         tqdm(train_loader, desc=f"[Epoch {epoch}] train"), start=1): #mem_tokens, pad_mask, y, cls_coords
             #mem, mask, y = mem.to(dev), mask.to(dev), y.to(dev)
@@ -195,31 +195,31 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
                 )
                 batch_metrics_rows.append(batch_row)
                 
-                if len(batch_metrics_rows) >= 2 * PATIENCE:
-                    # last 3 validation losses
-                    recent_vals = [r["val_loss_norm"] for r in batch_metrics_rows[-PATIENCE:]]
+                # if len(batch_metrics_rows) >= 2 * PATIENCE:
+                #     # last 3 validation losses
+                #     recent_vals = [r["val_loss_norm"] for r in batch_metrics_rows[-PATIENCE:]]
 
-                    # previous 3 validation losses
-                    prev_vals = [r["val_loss_norm"] for r in batch_metrics_rows[-2*PATIENCE:-PATIENCE]]
+                #     # previous 3 validation losses
+                #     prev_vals = [r["val_loss_norm"] for r in batch_metrics_rows[-2*PATIENCE:-PATIENCE]]
 
-                    if (sum(recent_vals) / PATIENCE) >= (sum(prev_vals) / PATIENCE):
-                        print("\n🔥 Early stopping inside epoch: validation not improving.")
-                        print(f"Stopped at batch {batch_idx} of epoch {epoch}.")
+                #     if ((epoch>1) and ((sum(recent_vals) / PATIENCE) >= (sum(prev_vals) / PATIENCE))):
+                #         print("\n🔥 Early stopping inside epoch: validation not improving.")
+                #         print(f"Stopped at batch {batch_idx} of epoch {epoch}.")
                         
-                        # Save checkpoint before breaking
-                        ckpt_path = os.path.join(save_dir, f"stopped_early_at_epoch_{epoch}_batch{batch_idx}.pt")
-                        torch.save({
-                            "epoch": epoch,
-                            "batch_idx": batch_idx,
-                            "model_state": model.state_dict(),
-                            "optimizer_state": optim.state_dict(),
-                            "metrics_epoch": metrics_rows,
-                            "metrics_batch": batch_metrics_rows,
-                        }, ckpt_path)
-                        print(f"Checkpoint saved to: {ckpt_path}\n")
-                        early_stop_triggered = True
-                        # break out of the batch loop (finish epoch)
-                        break
+                #         # Save checkpoint before breaking
+                #         ckpt_path = os.path.join(save_dir, f"stopped_early_at_epoch_{epoch}_batch{batch_idx}.pt")
+                #         torch.save({
+                #             "epoch": epoch,
+                #             "batch_idx": batch_idx,
+                #             "model_state": model.state_dict(),
+                #             "optimizer_state": optim.state_dict(),
+                #             "metrics_epoch": metrics_rows,
+                #             "metrics_batch": batch_metrics_rows,
+                #         }, ckpt_path)
+                #         print(f"Checkpoint saved to: {ckpt_path}\n")
+                #         early_stop_triggered = True
+                #         # break out of the batch loop (finish epoch)
+                #         break
                     
                 if val_eval["loss"] < best_val:
                     best_val = val_eval["loss"]

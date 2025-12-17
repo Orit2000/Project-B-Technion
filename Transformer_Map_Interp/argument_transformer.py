@@ -41,11 +41,11 @@ def parse_opt():
     parser.add_argument('--loss_type', type=str, default='squared_error', help='Loss type') 
     parser.add_argument('--validation_size', type=float, default=0.1, help='Validation size') 
     
-    parser.add_argument('--lr', type=float, default=1e-4, help='Learning rate.')
+    parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
     parser.add_argument('--weight_decay', type=float, default=3e-4, help='Weight decay for the optimizer.')
     parser.add_argument('--epochs', type=int, default=15, help='Number of training epochs.')
     parser.add_argument('--es_patience', type=int, default=15, help='Patience for early stopping.')
-    parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
+    parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
     
     parser.add_argument('--device', type=str, default="auto", help='Computation device.')
     #parser.add_argument('--num_hops', type=int, default=3, help='Number of hops to include in the graph.')

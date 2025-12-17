@@ -23,7 +23,7 @@ if __name__ == "__main__":
     # args.use_posenc = False
     # args.batch_size = 64
     args.max_km = 1.0
-    args.epochs = 3
+    args.epochs = 40
     args.new_spread = False
     
     np.random.seed(args.random_seed)
