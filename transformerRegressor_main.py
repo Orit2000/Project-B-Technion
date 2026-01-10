@@ -22,10 +22,10 @@ if __name__ == "__main__":
     # args.cls_init = "xavier"
     # args.use_posenc = False
     # args.batch_size = 64
-    args.max_km = 1.0
+    args.max_km = 5.0
     args.epochs = 40
     args.new_spread = False
-    
+    print(args.new_spread)
     np.random.seed(args.random_seed)
     torch.manual_seed(args.random_seed)
     save_dir = getattr(args, "save_path",

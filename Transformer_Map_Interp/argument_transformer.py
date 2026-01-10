@@ -17,7 +17,7 @@ def parse_opt():
     parser.add_argument('--include_elevation_in_features', type=bool, default=True, help='Batch size')
     parser.add_argument('--setsdistribtuion', type=str, default="equal", help="The random seed")
     parser.add_argument('--datasampling', type=str, default="uniform", help="The random seed")
-    parser.add_argument('--new_spread', type=bool, default="False", help="The random seed")
+    parser.add_argument('--new_spread', type=bool, default=False, help="The random seed")
     parser.add_argument('--random_seed', type=int, default="5", help="The random seed")
     parser.add_argument('--keep_n', type=float, default="0.025", help="The random seed")
     parser.add_argument('--normalize_elev', type=bool, default=True, help="The random seed")
@@ -42,7 +42,7 @@ def parse_opt():
     parser.add_argument('--validation_size', type=float, default=0.1, help='Validation size') 
     
     parser.add_argument('--lr', type=float, default=2e-4, help='Learning rate.')
-    parser.add_argument('--weight_decay', type=float, default=3e-4, help='Weight decay for the optimizer.')
+    parser.add_argument('--weight_decay', type=float, default=3e-5, help='Weight decay for the optimizer.') #3e-4
     parser.add_argument('--epochs', type=int, default=15, help='Number of training epochs.')
     parser.add_argument('--es_patience', type=int, default=15, help='Patience for early stopping.')
     parser.add_argument('--batch_size', type=int, default=128, help='Batch size')
@@ -83,7 +83,7 @@ def parse_opt():
     parser.add_argument('--valid_file', type=str, default="val_blobs_new.tiff")
     parser.add_argument('--test_file', type=str, default="test_blobs_new.tiff")
     parser.add_argument('--calib_file', type=str, default="n32_e035_1arc_v3__cropped_test.tiff")
-    parser.add_argument('--keep_n_dict', type=str, default="train:0.00001,valid:0.000001,test:0.000001,calib:0.000001") #train:0.6,valid:0.02,test:0.02,calib:0.000001
+    parser.add_argument('--keep_n_dict', type=str, default="train:0.6,valid:0.02,test:0.02,calib:0.000001") #train:0.6,valid:0.02,test:0.02,calib:0.000001
 
     args, unknowns = parser.parse_known_args()
     args.save_path = f"saved_models/{args.model}_{args.dataset}/"

@@ -120,7 +120,7 @@ def run_transformer(args, tb_writer: SummaryWriter | None = None) -> Tuple[float
     loss_fn = torch.nn.MSELoss(reduction="mean")
     optim = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     num_training_steps = len(train_loader) * args.epochs
-    num_warmup_steps = int(0.1 * num_training_steps)
+    num_warmup_steps = int(0.2 * num_training_steps)
 
     scheduler = get_cosine_schedule_with_warmup(
         optim,
