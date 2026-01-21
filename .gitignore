@@ -10,12 +10,8 @@ __pycache__
 *.log
 *.csv
 __pycache__/
-cache/*.pt
 logs/*.txt
-saved_models/*.pt
-.dt2
 runs/
-saved_models/
-*.dt2
-*.tif
-*.tiff
+kcn-torch-master/
+
+
