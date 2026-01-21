@@ -445,8 +445,8 @@ def faster_add_transformer_masks(
             #     inds  = inds[order]
             #     dists = dists[order]
                     # Random
-            if len(inds) > 10:
-                inds = np.random.choice(inds, size=10, replace=False)
+            if len(inds) > 5:
+                inds = np.random.choice(inds, size=5, replace=False)
 
             # Convert to tensor
             if len(inds) > 0:
@@ -618,7 +618,7 @@ def load_multi_dt2_data(args):
     #     for name in set_configs
     # )
     cache_exists = all(
-         os.path.exists(f"Transformer_Map_Interp/cache/{name}set_blobs_for_delannoy.pt")
+         os.path.exists(f"Transformer_Map_Interp/cache/{name}set_blobs_for_delannoy_5_neighbors.pt")
          for name in set_configs
     )
     print(f"Cache exists: {cache_exists}")
@@ -634,8 +634,8 @@ def load_multi_dt2_data(args):
         # trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_blobed.pt", weights_only=False)
         # validset = torch.load(f"Transformer_Map_Interp/cache/validset_blobed.pt", weights_only=False)
         # testset  = torch.load(f"Transformer_Map_Interp/cache/testset_blobed.pt",  weights_only=False)
-        trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_blobs_for_delannoy.pt", weights_only=False)
-        validset = torch.load(f"Transformer_Map_Interp/cache/validset_blobs_for_delannoy.pt", weights_only=False)
+        trainset = torch.load(f"Transformer_Map_Interp/cache/trainset_blobs_for_delannoy_5_neighbors.pt", weights_only=False)
+        validset = torch.load(f"Transformer_Map_Interp/cache/validset_blobs_for_delannoy_5_neighbors.pt", weights_only=False)
         testset  = torch.load(f"Transformer_Map_Interp/cache/testset_blobs_for_delannoy.pt",  weights_only=False)
         return trainset, validset, testset #, calibset
     else:
@@ -702,9 +702,9 @@ def load_multi_dt2_data(args):
     # torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_blobed.pt")
     # torch.save(validset, f"Transformer_Map_Interp/cache/validset_blobed.pt")
     # torch.save(testset,  f"Transformer_Map_Interp/cache/testset_blobed.pt")
-    torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_blobs_for_delannoy.pt")
-    torch.save(validset, f"Transformer_Map_Interp/cache/validset_blobs_for_delannoy.pt")
-    torch.save(testset,  f"Transformer_Map_Interp/cache/testset_blobs_for_delannoy.pt")
+    torch.save(trainset, f"Transformer_Map_Interp/cache/trainset_blobs_for_delannoy_5_neighbors.pt")
+    torch.save(validset, f"Transformer_Map_Interp/cache/validset_blobs_for_delannoy_5_neighbors.pt")
+    torch.save(testset,  f"Transformer_Map_Interp/cache/testset_blobs_for_delannoy_5_neighbors.pt")
     #torch.save(calibset, f"Transformer_Map_Interp/cache/calibset_{cache_key}.pt")
     print (f"build Kdtree Lap: {time.perf_counter() - t0:.3f}s")
     return trainset, validset, testset#, calibset
